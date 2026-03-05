@@ -1,0 +1,345 @@
+---
+title: "Joint Exponential Time-to-Event Model for Efficacy and Dropout with Logistic Toxicity"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+:::callout-title
+- [heartofsaigon/published_docs/01]
+- This is from the book *Bayesian Design for Phase I-II Clinical Trials*, chapter 12: Dealing with Dropouts @yuan2016bayesian.
+:::
+
+
+## Overview
+
+This document explains a joint probability model for dose-finding with two components:
+
+- **Toxicity** is a binary outcome observed quickly for every patient.
+- **Efficacy** requires follow-up and may be missing due to **dropout**, which can be **informative** (i.e., non-ignorable censoring).
+
+The model uses:
+
+- A **logistic regression** for toxicity probability.
+- A **shared-frailty exponential time-to-event model** jointly for efficacy time and dropout time, so that dropout can be informative about efficacy.
+
+Throughout, doses are discrete levels $d_1 < d_2 < \cdots < d_J$. For patient $i$, the assigned dose is denoted $d_{[i]}$.
+
+## Notation
+
+For patient $i$:
+
+- $Y_{T,i} \in \{0,1\}$ is the toxicity indicator.
+- $t_{E,i}$ is the (latent) time to efficacy.
+- $t_{D,i}$ is the (latent) time to dropout.
+- $c_i$ is administrative censoring time.
+- $t^o_{E,i} = \min(t_{E,i}, t_{D,i}, c_i)$ is the observed time for efficacy.
+- $t^o_{D,i} = \min(t_{D,i}, c_i)$ is the observed time for dropout.
+- $\epsilon_{E,i} = I\!\left(t_{E,i} \le \min(t_{D,i}, c_i)\right)$ is the efficacy event indicator.
+- $\epsilon_{D,i} = I(t_{D,i} \le c_i)$ is the dropout event indicator.
+
+Let $r_n$ be the total number of dropouts observed by the time the $(n+1)$th patient is to be assigned a dose, and $r_{\min}$ be a prespecified cutoff.
+
+## What is a hazard function?
+
+Let $T \ge 0$ be a time-to-event random variable.
+
+The **survival function** is
+
+$$
+S(t) = \Pr(T > t).
+$$
+
+If $T$ has a density $f(t)$, then $f(t) = \frac{d}{dt}\Pr(T \le t)$ and $S'(t) = -f(t)$.
+
+The **hazard function** is defined as the instantaneous event rate at time $t$, conditional on survival up to $t$:
+
+$$
+h(t) = \lim_{\Delta \to 0^+} \frac{\Pr(t \le T < t+\Delta \mid T \ge t)}{\Delta}.
+$$
+
+Intuitively, $h(t)$ answers:
+
+> “Given the event has not occurred by time $t$, how rapidly is it about to occur just after $t$?”
+
+### Bridging formula: $h(t) = f(t)/S(t)$
+
+Using the definition above, one can show the key identity
+
+$$
+h(t) = \frac{f(t)}{S(t)}.
+$$
+
+Since $S'(t) = -f(t)$, we obtain the differential equation
+
+$$
+S'(t) = -h(t)\,S(t),
+\qquad
+\text{equivalently,}
+\qquad
+\frac{S'(t)}{S(t)} = -h(t).
+$$
+
+This is the bridge between a hazard model and the implied survival function.
+
+## Constant hazard implies an exponential distribution
+
+If the hazard is constant over time, $h(t) = h$ for all $t$, then
+
+$$
+\frac{S'(t)}{S(t)} = -h.
+$$
+
+Integrating from $0$ to $t$ and using $S(0)=1$, i.e., 
+
+$$
+\int_0^t\frac{S'(u)}{S(u)}du = \int_0^t(-h)du.
+$$
+LHS is $\log S(t) - \log S(0)$, and $S(0) = Pr(T >0) = 1$. RHS is $-ht$. So,
+
+$$
+\log S(t) = -ht
+\quad\Rightarrow\quad
+S(t) = \exp(-ht).
+$$
+
+Therefore the cumulative distribution function (CDF) is
+
+$$
+F(t) = \Pr(T \le t) = 1 - S(t) = 1 - \exp(-ht).
+$$
+
+This is exactly the exponential distribution with **rate** parameter $h$.
+
+## Discrete-time intuition for $S(t) = e^{-ht}$
+
+A complementary intuition uses a small time step $\Delta$.
+
+If the hazard is constant at $h$, then over a short interval of length $\Delta$ the probability of surviving that interval is approximately
+
+$$
+\Pr(\text{survive } [t, t+\Delta) \mid T \ge t) \approx 1 - h\Delta.
+$$
+
+Split $t$ into $m$ small pieces of length $\Delta = t/m$. Surviving all $m$ pieces gives
+
+$$
+S(t) \approx (1 - h\Delta)^m
+= \left(1 - h\frac{t}{m}\right)^m
+\;\xrightarrow[m\to\infty]{}\;
+e^{-ht}.
+$$
+
+This directly explains why constant hazard leads to an exponential survival curve.
+
+## Toxicity model (binary, always observed)
+
+Toxicity probability at dose $d$ is modeled by logistic regression:
+
+$$
+\pi_T(d) = \Pr(Y_T=1 \mid d),
+\qquad
+\text{logit}\{\pi_T(d)\} = \mu_T + \beta_T d.
+$$
+
+A convenient Bernoulli likelihood form is
+
+$$
+f(y_{T,i}\mid \theta)
+=
+\frac{\exp\{y_{T,i}(\mu_T+\beta_T d_{[i]})\}}{1+\exp(\mu_T+\beta_T d_{[i]})}.
+$$
+
+This expression is algebraically equivalent to the usual $p^{y}(1-p)^{1-y}$ form with $p=\text{logit}^{-1}(\mu_T+\beta_T d_{[i]})$.
+
+## Joint model for efficacy and dropout
+
+Efficacy is treated as time-to-event, but may be censored by dropout. To allow dropout to be informative, the model jointly specifies hazard functions for $t_{E,i}$ and $t_{D,i}$ using a **shared frailty** $\zeta_i$.
+
+### Shared frailty
+
+Assume
+
+$$
+\zeta_i \sim \text{iid } N(0,\sigma^2).
+$$
+
+The shared $\zeta_i$ induces dependence between $t_{E,i}$ and $t_{D,i}$ after marginalizing over $\zeta_i$, capturing informative censoring.
+
+### Efficacy hazard
+
+$$
+h_E(t_{E,i}\mid d_{[i]},\zeta_i)
+=
+\lambda \exp\left\{\zeta_i\, I(r_n>r_{\min}) + \beta_{E,1} d_{[i]} + \beta_{E,2} d_{[i]}^2\right\}.
+$$
+
+- $\lambda$ is a baseline hazard.
+- $\beta_{E,1},\beta_{E,2}$ allow linear and quadratic dose effects (e.g., unimodal or plateau behavior).
+- The indicator $I(r_n>r_{\min})$ delays fitting the dropout-related part of the joint model until dropout information is sufficient.
+
+### Dropout hazard
+
+$$
+h_D(t_{D,i}\mid d_{[i]},\zeta_i)
+=
+\gamma \exp\left\{(\alpha \zeta_i + \beta_D d_{[i]})\, I(r_n>r_{\min})\right\}.
+$$
+
+- $\gamma$ is a baseline dropout hazard.
+- $\beta_D$ is a dose effect on dropout.
+- $\alpha$ controls the direction and strength of association between efficacy and dropout through $\zeta_i$:
+  - $\alpha>0$ allows positive association,
+  - $\alpha<0$ allows negative association,
+  - $\alpha=0$ corresponds to conditional independence of dropout from the frailty, reducing informativeness.
+
+## Exponential structure conditional on $(d,\zeta)$
+
+In this specification, neither $h_E(\cdot)$ nor $h_D(\cdot)$ depends on time $t$, so conditional on $(d_{[i]},\zeta_i)$:
+
+$$
+t_{E,i} \mid d_{[i]},\zeta_i \sim \text{Exponential}\big(h_E(d_{[i]},\zeta_i)\big),
+\qquad
+t_{D,i} \mid d_{[i]},\zeta_i \sim \text{Exponential}\big(h_D(d_{[i]},\zeta_i)\big).
+$$
+
+Hence for a follow-up horizon $\tau$,
+
+$$
+\Pr(t_{E,i}\le \tau \mid d_{[i]},\zeta_i)
+=
+1-\exp\{-h_E(d_{[i]},\zeta_i)\tau\}.
+$$
+
+Marginally over $\zeta_i$, $\Pr(t_{E,i}\le \tau \mid d_{[i]})$ becomes a mixture and generally is not exponential.
+
+## Likelihood for efficacy and dropout (temporarily ignoring toxicity)
+
+This section gives the likelihood contribution from $(t^o_{E,i},t^o_{D,i},\epsilon_{E,i},\epsilon_{D,i})$ only.
+
+Define the constant hazards (for patient $i$)
+
+$$
+h_{E,i} = h_E(d_{[i]},\zeta_i),
+\qquad
+h_{D,i} = h_D(d_{[i]},\zeta_i).
+$$
+
+### Conditional likelihood given $\zeta_i$
+
+For an exponential time-to-event outcome, the likelihood contribution has the generic form
+
+$$
+\big[h\big]^{\epsilon}\exp(-h t^o),
+$$
+
+where $\epsilon$ indicates whether the event occurred ($\epsilon=1$) or was censored ($\epsilon=0$), and $t^o$ is the observed time.
+
+Thus, given $\zeta_i$,
+
+$$
+L_i(\zeta_i)
+=
+\left[h_{E,i}\right]^{\epsilon_{E,i}}
+\exp\left(-h_{E,i} t^o_{E,i}\right)
+\times
+\left[h_{D,i}\right]^{\epsilon_{D,i}}
+\exp\left(-h_{D,i} t^o_{D,i}\right).
+$$
+
+This is the product of an efficacy term and a dropout term.
+
+### Marginal likelihood integrating out the frailty
+
+Because $\zeta_i$ is unobserved, the marginal likelihood integrates over its normal distribution:
+
+$$
+L_i
+=
+\int
+L_i(\zeta_i)\,
+\phi(\zeta_i;0,\sigma^2)\,
+d\zeta_i,
+$$
+
+where $\phi(\cdot;0,\sigma^2)$ is the $N(0,\sigma^2)$ density.
+
+The overall likelihood (ignoring toxicity) is
+
+$$
+L = \prod_{i=1}^n L_i.
+$$
+
+## Observed efficacy before dropout by time $\tau$
+
+Sometimes one is interested in the probability of **observing** efficacy by time $\tau$, meaning efficacy occurs before dropout and before $\tau$.
+
+Conditional on $(d,\zeta)$ and assuming conditional independence of the two exponential clocks,
+
+$$
+\Pr(t_E \le \tau,\; t_E < t_D \mid d,\zeta)
+=
+\int_0^{\tau}
+\Pr(t_D > t)\, f_E(t)\, dt.
+$$
+
+With exponential forms,
+
+$$
+\Pr(t_D > t \mid d,\zeta) = \exp\{-h_D(d,\zeta)t\},
+\qquad
+f_E(t \mid d,\zeta) = h_E(d,\zeta)\exp\{-h_E(d,\zeta)t\}.
+$$
+
+So
+
+$$
+\Pr(t_E \le \tau,\; t_E < t_D \mid d,\zeta)
+=
+\int_0^{\tau}
+h_E \exp\{-(h_E+h_D)t\}\,dt
+=
+\frac{h_E}{h_E+h_D}\left(1-\exp\{-(h_E+h_D)\tau\}\right),
+$$
+
+where $h_E=h_E(d,\zeta)$ and $h_D=h_D(d,\zeta)$.
+
+This expression makes the role of dropout explicit: larger $h_D$ reduces the chance that efficacy is observed before dropout.
+
+## Summary of parameters
+
+The joint model (including toxicity) uses parameters
+
+- Toxicity: $\mu_T,\beta_T$.
+- Efficacy hazard: $\lambda,\beta_{E,1},\beta_{E,2}$.
+- Dropout hazard: $\gamma,\beta_D,\alpha$.
+- Frailty: $\sigma^2$.
+- Design control: $r_{\min}$ and the dynamic count $r_n$ through $I(r_n>r_{\min})$.
+
+## Practical interpretation
+
+- Modeling $h_E$ and $h_D$ as constants in time yields an exponential model, giving closed-form survival and event probabilities.
+- The shared frailty $\zeta_i$ allows dropout to be informative about efficacy, correcting bias that would arise under an ignorability assumption.
+- The indicator $I(r_n>r_{\min})$ reflects a pragmatic choice: only activate the dropout association structure when there are enough observed dropouts to support estimation.
+
+
+
+

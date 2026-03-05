@@ -1,0 +1,669 @@
+---
+title: "Two Ways to Add Prior Information in Gaussian Process Models: Virtual Constraints vs Historical Trajectories"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+:::callout-title
+- [heartofsaigon/published_docs/04]
+- Two papers: @agrell2019gaussian and  @pfingstl2022integrating.
+:::
+
+
+## Learning goals
+
+By the end of this note, you should be able to:
+
+- Explain what each paper is trying to solve.
+- Match the symbols in each paper to a simple real example.
+- Avoid the common confusions we discussed:
+  - “trajectories” vs “objectives,”
+  - “virtual points” vs real observations,
+  - what $C_e$ is (and is not),
+  - what $f_*$ is (and is not),
+  - how constraints are imposed (truncation),
+  - how this differs from Bayesian optimization (BO).
+
+We discuss two papers:
+
+- Agrell (2019): constrained Gaussian process regression using linear operators and virtual constraint points.
+- Pfingstl & Zimmermann (2022): learning GP priors from many previous trajectories (two approaches) and forecasting a current trajectory.
+
+## A quick refresher: what a GP model is
+
+A Gaussian process (GP) is a Bayesian prior over functions.
+
+- There is an unknown function $f(x)$ we want to learn.
+- We observe noisy data:
+  $$y_i = f(x_i) + \epsilon_i,\quad \epsilon_i \sim N(0,\sigma^2).$$
+- A GP prior says that for any finite set of inputs, the vector of function values is multivariate normal:
+  $$\big(f(x_1),\dots,f(x_n)\big)^\top \sim N\big(m(X),\,K(X,X)\big).$$
+
+After observing data, we can compute a posterior distribution for $f$ at new inputs.
+
+## Paper 1 (Agrell 2019) @agrell2019gaussian: adding shape knowledge using virtual constraint points
+
+### What problem is the paper solving?
+
+Sometimes we do not only have data. We also have scientific knowledge about the shape of the function, such as:
+
+- boundedness: $0 \le f(x) \le 1$,
+- monotonicity: “as dose increases, response does not decrease,”
+- convexity/concavity, and similar shape properties.
+
+The paper’s key idea is:
+
+- describe the shape knowledge as an inequality about a linear transformation of the function,
+- enforce that inequality at many chosen “virtual” input points.
+
+### The key objects and what they mean
+
+#### $L$ is a linear operator
+
+$L$ is a rule that takes a function $f(\cdot)$ and produces another function (or number) in a linear way.
+
+Examples:
+
+- identity operator: $(Lf)(x) = f(x)$,
+- derivative: $(Lf)(x) = f'(x)$,
+- second derivative: $(Lf)(x) = f''(x)$.
+
+Because $L$ is linear and $f$ is a GP, $(Lf)(x)$ is still Gaussian at any finite set of $x$ values.
+
+This is the part you correctly remembered: “a linear function of a normal is normal.”
+
+:::callout-note
+### Linear operators in statistics
+
+#### What is a linear operator?
+
+A **linear operator** is a rule $L$ that takes an input (a function $f$ or a vector $\beta$) and returns an output (a function or a number) in a way that respects **superposition**:
+
+$$
+L\{\alpha f + \beta g\} \;=\; \alpha\,Lf \;+\; \beta\,Lg,
+$$
+
+for any two inputs $f,g$ and any scalars $\alpha,\beta$.
+
+You can also check linearity using two simpler properties:
+
+- **Additivity:** $L\{f+g\}=Lf+Lg$
+- **Homogeneity:** $L\{\alpha f\}=\alpha Lf$
+
+If both hold, then $L$ is linear.
+
+#### A fast way to recognize linearity
+
+A quick practical rule is:
+
+- Addition/subtraction must be **between functions/vectors**, not “adding a constant shift”.
+- Multiplication must be by a **constant**, not by another function (or something that depends on the input).
+
+Equivalently, linear operators are built from:
+
+- sums and differences,
+- multiplication by fixed constants,
+- fixed linear maps (matrix multiplication, derivatives, finite differences, integrals with fixed weights).
+
+A very fast necessary check:
+
+- If $L(0)\neq 0$, then $L$ is **not** linear.
+
+#### A common confusion: adding a constant is not linear
+
+Consider
+
+$$
+(Lf)(x) = f(x) + a,
+$$
+
+where $a$ is a fixed constant.
+
+Then $L(0)=a\neq 0$, so this is **not** linear (it is an *affine* operator). It becomes linear only if $a=0$.
+
+#### Examples of linear operators on functions
+
+##### Identity operator
+
+$$
+(Lf)(x)=f(x).
+$$
+
+Used for simple boundedness constraints like $0\le f(x)\le b$.
+
+##### Derivative operator
+
+$$
+(Lf)(x)=f^{\prime}(x).
+$$
+
+Linearity holds because differentiation distributes over sums and constants:
+
+$$
+(\alpha f + \beta g)^{\prime} = \alpha f^{\prime} + \beta g^{\prime}.
+$$
+
+Used for monotonicity constraints such as $f^{\prime}(x)\ge 0$.
+
+##### Second derivative operator
+
+$$
+(Lf)(x)=f^{\prime\prime}(x).
+$$
+
+Used for convexity ($f^{\prime\prime}(x)\ge 0$) or concavity ($f^{\prime\prime}(x)\le 0$).
+
+##### Finite-difference operator (common on discrete grids)
+
+For a grid step $\Delta$,
+
+$$
+(Lf)(P) = f(P+\Delta)-f(P).
+$$
+
+To see linearity, apply $L$ to a linear combination:
+
+$$
+\begin{aligned}
+L\{\alpha f+\beta g\}(P)
+&= (\alpha f+\beta g)(P+\Delta) - (\alpha f+\beta g)(P) \\
+&= \alpha\big(f(P+\Delta)-f(P)\big) + \beta\big(g(P+\Delta)-g(P)\big) \\
+&= \alpha Lf(P) + \beta Lg(P).
+\end{aligned}
+$$
+
+Used when $P$ is a discrete dose level and you want discrete monotonicity:
+
+$$
+f(P+\Delta) - f(P)\ge 0.
+$$
+
+##### Integration against fixed weights (a linear functional)
+
+$$
+Lf = \int w(t)\,f(t)\,dt,
+$$
+
+where $w(t)$ is a known weight function.
+
+This is linear because the integral distributes over sums and pulls out constants.
+
+Used for averages and summary measures, such as an area-under-curve endpoint.
+
+##### Evaluation at a point (a linear functional)
+
+$$
+Lf = f(x_0),
+$$
+
+a number obtained by “reading off” the function at $x_0$.
+
+This is linear because
+
+$$
+(\alpha f+\beta g)(x_0)=\alpha f(x_0)+\beta g(x_0).
+$$
+
+Used for predictions at specific inputs.
+
+#### Examples of linear operators on vectors (regression is full of these)
+
+##### Linear contrast of regression coefficients
+
+Let $\beta\in\mathbb R^p$ and $c\in\mathbb R^p$ be fixed. Define
+
+$$
+L(\beta)=c^{\top}\beta.
+$$
+
+To show linearity, take $\beta_1,\beta_2$ and scalars $\alpha,\gamma$:
+
+$$
+\begin{aligned}
+L(\alpha\beta_1+\gamma\beta_2)
+&= c^{\top}(\alpha\beta_1+\gamma\beta_2) \\
+&= \alpha c^{\top}\beta_1 + \gamma c^{\top}\beta_2 \\
+&= \alpha L(\beta_1) + \gamma L(\beta_2).
+\end{aligned}
+$$
+
+This represents many estimands in clinical trials (differences, slopes, weighted averages).
+
+##### Matrix multiplication
+
+For a fixed matrix $A$ and vector $y$, define
+
+$$
+L(y)=Ay.
+$$
+
+This is linear because
+
+$$
+A(\alpha y_1+\beta y_2)=\alpha Ay_1+\beta Ay_2.
+$$
+
+Common examples include fitted values in linear regression:
+
+$$
+\hat y = Hy,\qquad H = X(X^{\top}X)^{-1}X^{\top}.
+$$
+
+##### Centering (demeaning) operator
+
+Define the centering matrix
+
+$$
+M = I-\frac{1}{n}\mathbf 1\mathbf 1^{\top},
+$$
+
+and the operator
+
+$$
+L(y)=My.
+$$
+
+This is linear and is widely used to remove an intercept or to residualize variables.
+
+#### Red flags: operators that are usually not linear
+
+These operations typically break linearity:
+
+- adding a nonzero constant shift $f(x)+a$,
+- products such as $f(x)g(x)$,
+- squares such as $f(x)^2$,
+- absolute value $|f(x)|$,
+- max/min operators such as $\max_x f(x)$,
+- nonlinear transforms such as $\log f(x)$ or $\exp(f(x))$.
+:::
+
+
+
+
+
+
+
+#### The constraint is an inequality event
+
+Agrell writes constraints in the form:
+$$a(x) \le (Lf)(x) \le b(x),\quad \text{for all } x \in \mathcal X.$$
+
+Here:
+
+- $a(x)$ and $b(x)$ are known bounding functions,
+- $(Lf)(x)$ is the function quantity we constrain (value, slope, curvature, etc.).
+
+### Why do we need “virtual points” $X_v$?
+
+The constraint says “for all $x$ in the domain,” which is infinitely many inequalities.
+
+We cannot directly condition on infinitely many inequalities.
+
+So the paper chooses a finite set of virtual constraint locations:
+$$X_v = \{x_1^v,\dots,x_M^v\}.$$
+
+Then it enforces the constraint at those points:
+$$a(X_v) \le (Lf)(X_v) \le b(X_v).$$
+
+This is what “virtual data” means here:
+
+- $X_v$ is not real measured inputs,
+- it is a set of points we choose to enforce the constraint,
+- “dense” means we pick enough points to make the constraint hold almost everywhere.
+
+### What is $C_e$?
+
+At the virtual points, define the constraint vector:
+$$C = (Lf)(X_v).$$
+
+Sometimes a small Gaussian “jitter” is added for stability:
+$$C_e = C + \varepsilon_v,\quad \varepsilon_v \sim N(0,\sigma_v^2 I).$$
+
+Important clarifications:
+
+- $C$ and $C_e$ are not observed.
+- We never see them in the lab.
+- We only impose that they satisfy the constraint.
+
+### What is the constraint event?
+
+Define the event:
+$$\mathcal C = \{a(X_v) \le C_e \le b(X_v)\},$$
+where the inequalities are checked componentwise.
+
+Example: nonnegativity
+
+- $L=I$,
+- $a(x)=0$, $b(x)=+\infty$,
+- then $\mathcal C = \{C_e \ge 0\}$.
+
+### What is $f_*$?
+
+$f_*$ means the latent function values at prediction inputs $X_*$:
+$$f_* = f(X_*).$$
+
+Important clarifications:
+
+- $f_*$ is not observed.
+- It is exactly what we want to predict.
+
+If you later actually measure at $X_*$, that measurement is a different random variable:
+$$y_* = f_* + \epsilon_*.$$
+
+### Step-by-step algorithm to get predictions for $f_*$
+
+This is the “procedural” version of what the paper is doing.
+
+#### Step 1: fit the unconstrained GP to real data
+
+You start from your real observations $(X,Y)$ and a GP prior.
+
+This gives you the usual GP posterior quantities.
+
+#### Step 2: compute the Gaussian distribution $C_e \mid Y$
+
+Because $(Y, C_e)$ is jointly Gaussian under the model, conditioning on $Y$ gives:
+$$C_e \mid Y \sim N(\mu_{C\mid Y},\Sigma_{C\mid Y}).$$
+
+This is still an ordinary multivariate normal.
+
+#### Step 3: impose the inequality by truncation
+
+Now we want $C_e$ to satisfy the constraint event $\mathcal C$:
+$$C_e \mid Y,\mathcal C \sim \text{Truncated MVN on } [a(X_v), b(X_v)].$$
+
+This is the key step:
+
+- “truncate” means we only allow draws where all components satisfy the bounds.
+
+#### Step 4: sample $C_e^{(s)}$ from the truncated distribution
+
+We generate $S$ samples:
+$$C_e^{(1)},\dots,C_e^{(S)} \sim p(C_e \mid Y,\mathcal C).$$
+
+Very important clarification that caused confusion:
+
+- $X_v$ is fixed.
+- Each sample $C_e^{(s)}$ is a full vector of length $M$, giving values at all virtual points.
+- We do not remove $x_1^v$ and move to $x_2^v.
+  We accept or reject the entire vector sample, not individual points.
+
+#### Step 5: condition to get $f_* \mid Y, C_e^{(s)}$
+
+Given a particular constraint sample $C_e^{(s)}$, the conditional distribution is Gaussian:
+$$f_* \mid Y, C_e^{(s)} \sim N(\mu_*^{(s)},\Sigma_*).$$
+
+Draw $f_*^{(s)}$ from this Gaussian.
+
+#### Step 6: the final constrained posterior is a mixture
+
+The collection $\{f_*^{(s)}\}_{s=1}^S$ approximates:
+$$p(f_* \mid Y,\mathcal C).$$
+
+This is the final object you want: the posterior distribution of the latent function at $X_*$ under the constraints.
+
+### A tiny example you can map to the notation
+
+Suppose:
+
+- input $x$ is dose on $[0,1]$,
+- we know response is nonnegative: $f(x)\ge 0$,
+- so $L=I$, $a=0$, $b=+\infty$.
+
+Real observations:
+
+- $X = (0.2, 0.8)$,
+- $Y = (0.10, -0.05)$.
+
+Virtual points:
+
+- $X_v = (0.0, 0.5, 1.0)$.
+
+Prediction point:
+
+- $X_* = (0.7)$ and $f_* = f(0.7)$.
+
+Then the method:
+
+- computes $C_e\mid Y$ for $C_e \approx (f(0),f(0.5),f(1))$,
+- samples only those $C_e$ where all three entries are $\ge 0$,
+- uses those samples to compute the constrained posterior for $f(0.7)$.
+
+## Paper 2 (Pfingstl & Zimmermann 2022) @pfingstl2022integrating: learning a GP prior from many trajectories
+
+### What problem is the paper solving?
+
+Here the key difficulty is not inequality constraints.
+
+The key difficulty is:
+
+- we have many previous trajectories (time series) from similar systems,
+- we want to use them to build a better GP model,
+- then we want to forecast a new “current” trajectory as it is being observed.
+
+This is common in degradation monitoring:
+
+- many old machines (previous trajectories),
+- one new machine you are monitoring (current trajectory).
+
+### The biggest confusion: trajectories are not objectives
+
+The paper uses:
+
+- $m$ = number of trajectories, indexed by $j=1,\dots,m$,
+- $n_j$ = number of observations in trajectory $j$.
+
+This is not multi-objective notation.
+
+It is “multiple curves,” not “multiple outcomes.”
+
+### The data structure
+
+Trajectory $j$ contains:
+$$\{(x_{i,j}, y_{i,j}) : i=1,\dots,n_j\}.$$
+
+Think:
+
+- $x_{i,j}$ is time (or cycles) at which machine $j$ is measured,
+- $y_{i,j}$ is the scalar degradation measurement at that time.
+
+### The workflow (shared by both approaches)
+
+Both approaches follow the same high-level plan:
+
+- use the $m$ previous trajectories to define a GP model,
+- then use standard GP conditioning to update predictions for the current trajectory as new points arrive.
+
+The difference is how the GP model is built from previous trajectories.
+
+## Paper 2 Approach 1: prescribed GP + pooled marginal likelihood
+
+### What you assume
+
+You pick a standard GP model family:
+
+- mean function $m_\theta(x)$,
+- kernel $k_\theta(x,x')$,
+- hyperparameters $\theta$ (scale, lengthscale/decay, noise, etc.).
+
+### How you use the previous trajectories
+
+For each trajectory $j$, the GP gives a marginal likelihood:
+$$p(\mathbf y_j \mid \mathbf x_j, \theta).$$
+
+Assuming trajectories are independent given $\theta$, the product over trajectories is:
+$$\prod_{j=1}^m p(\mathbf y_j \mid \mathbf x_j, \theta).$$
+
+They choose $\theta$ by optimizing (empirical Bayes / plug-in).
+
+### How you make predictions for the current trajectory
+
+Now hold $\hat\theta$ fixed.
+
+As the current trajectory provides new observed points, you compute the usual GP posterior by conditioning.
+
+Important contrast to BO:
+
+- In BO you choose the next $x$ to sample.
+- Here the next $x$ is typically “time moves forward,” so you do not optimize where to sample.
+  You mainly forecast.
+
+## Paper 2 Approach 2: IGPM (infer GP mean and covariance using basis regressions)
+
+### What you assume
+
+You select basis functions $\phi_1,\dots,\phi_p$ and approximate each trajectory as:
+$$f_j(x) \approx \sum_{k=1}^p \phi_k(x)\,\beta_{k,j} = \phi(x)^\top \beta_j.$$
+
+If you choose polynomial bases, this looks like:
+$$f_j(x) \approx \beta_{0,j} + x\beta_{1,j} + x^2\beta_{2,j} + \cdots.$$
+
+### Step-by-step construction
+
+#### Step 1: fit each trajectory separately (OLS)
+
+For trajectory $j$, build a design matrix $\Phi_j$ whose entries are basis functions evaluated at that trajectory’s inputs:
+$$(\Phi_j)_{i,k} = \phi_k(x_{i,j}).$$
+
+Estimate coefficients by least squares:
+$$\hat\beta_j = (\Phi_j^\top \Phi_j)^{-1}\Phi_j^\top \mathbf y_j.$$
+
+This is done separately for each $j$.
+
+#### Step 2: pool coefficients across trajectories
+
+Compute:
+
+- sample mean:
+  $$\hat\mu_\beta = \frac{1}{m}\sum_{j=1}^m \hat\beta_j,$$
+- sample covariance:
+  $$\hat\Sigma_\beta = \frac{1}{m-1}\sum_{j=1}^m (\hat\beta_j-\hat\mu_\beta)(\hat\beta_j-\hat\mu_\beta)^\top.$$
+
+This is why it behaves like an empirical Bayes plug-in idea:
+
+- use previous trajectories to estimate “prior parameters,”
+- then treat them as fixed.
+
+#### Step 3: induce a GP mean and covariance
+
+Define:
+
+- inferred mean:
+  $$m(x) = \phi(x)^\top \hat\mu_\beta,$$
+- inferred covariance:
+  $$k(x,x') = \phi(x)^\top \hat\Sigma_\beta\,\phi(x').$$
+
+Now you have a GP model without picking a standard stationary kernel first.
+
+#### Step 4: forecast the current trajectory by conditioning
+
+As in Approach 1, you then condition on the current trajectory’s observed points to get predictions.
+
+## Comparing the two papers: what “extra information” means
+
+### Agrell (2019)
+
+- Extra information is about the shape of $f$ in input space.
+- It is imposed by inequality constraints on $(Lf)(x)$.
+- It is enforced at virtual points $X_v$.
+- Computation uses truncated multivariate normal sampling for the constraint vector.
+
+### Pfingstl & Zimmermann (2022)
+
+- Extra information is many previous trajectories.
+- It is used to learn GP hyperparameters (Approach 1) or an inferred mean/covariance (Approach 2).
+- Forecasting for the current trajectory uses standard GP conditioning.
+
+## How to use these ideas in projects (simple guidance)
+
+### If you have scientific shape constraints
+
+Example: “immune response increases with dose” or “AE risk is nondecreasing in dose.”
+
+Agrell-style constrained GP is relevant:
+
+- choose $L$ (identity for bounds, derivative for monotonicity),
+- choose bounds $a,b$,
+- pick $X_v$ dense enough,
+- do constrained posterior sampling and prediction.
+
+### If you have many historical curves from similar systems
+
+Example: “many past cohorts each with a time course” and you want to forecast a new cohort’s time course.
+
+Pfingstl-style is relevant:
+
+- Approach 1: choose a standard kernel and learn its hyperparameters from historical trajectories.
+- Approach 2: fit basis regressions to each historical trajectory, then use coefficient variability to construct $m(\cdot)$ and $k(\cdot,\cdot)$.
+
+### If you have pointwise prior knowledge at a few special inputs (common in BO)
+
+This is not exactly either paper’s main focus, but it is closest in spirit to Agrell’s “virtual information” idea.
+
+A practical approach is to add pseudo-observations:
+
+- at $x_1$: add $y=m_1$ with noise variance $s_1^2$,
+- at $x_4$: add $y=m_4$ with noise variance $s_4^2$,
+
+and fit the GP normally.
+
+## Common mistakes and how to avoid them
+
+### Mistake 1: thinking $m$ in Pfingstl is “number of objectives”
+
+It is not.
+
+It is number of trajectories (curves), indexed by $j$.
+
+### Mistake 2: thinking $f_*$ is observed
+
+It is not.
+
+$f_* = f(X_*)$ is what we want to predict.
+
+### Mistake 3: thinking we “remove” virtual points if constraints fail
+
+We do not.
+
+We sample a full vector $C_e$ over the fixed set $X_v$ and accept only if all constraints hold.
+
+### Mistake 4: mixing “posterior of $f$” with “posterior predictive of $y$”
+
+- posterior of $f_*$: $p(f_*\mid \text{data})$,
+- posterior predictive of $y_*$: $p(y_*\mid \text{data})$ includes observation noise.
+
+## Summary
+
+Agrell (2019):
+
+- Add shape constraints using linear operators $L$ and virtual points $X_v$.
+- Enforce constraints by sampling a truncated Gaussian constraint vector and then conditioning to predict $f_*$.
+
+Pfingstl & Zimmermann (2022):
+
+- Use many previous trajectories to build a GP model.
+- Approach 1: learn hyperparameters by pooled marginal likelihood.
+- Approach 2: infer mean/covariance from basis coefficients across trajectories.
+- Forecast a current trajectory by standard GP conditioning.
+
+
+

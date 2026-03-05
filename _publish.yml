@@ -1,0 +1,8 @@
+- source: 01.qmd
+  quarto-pub:
+    - id: d08003b9-14a6-424d-9a3f-363e37e2a791
+      url: 'https://nam-anh.quarto.pub/joint-exponential-time-to-event-model-for-efficacy-and-dropout-with-logistic-toxicity'
+- source: 02.qmd
+  quarto-pub:
+    - id: 6a59b117-4d02-49f4-8da7-782c3adb39eb
+      url: 'https://nam-anh.quarto.pub/knowledge-gradient-stopping-rule-for-bayesian-ranking-and-selection-(and-bo-intuition'

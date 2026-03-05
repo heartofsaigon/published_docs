@@ -1,0 +1,4 @@
+- source: multivariate_normal.qmd
+  quarto-pub:
+    - id: 874b3339-5732-4d4a-84f3-f9e2753f06e5
+      url: 'https://nam-anh.quarto.pub/simulating-two-correlated-outcomes-in-a-five-arm-trial-and-fitting-a-bayesian-model-in-stan'

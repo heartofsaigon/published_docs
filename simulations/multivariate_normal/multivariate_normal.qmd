@@ -1,0 +1,286 @@
+---
+title: "Simulating Two Correlated Outcomes in a Five-Arm Trial and Fitting a Bayesian Model in Stan"
+author: "Na"
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: noindex.html
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+#bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+
+## Overview
+
+In many Phase II vaccine studies, each participant contributes more than one immunogenicity measurement. For example, you might measure:
+
+- an antibody binding response (Outcome 1), and  
+- a neutralization response (Outcome 2).
+
+These two outcomes are often **correlated** within the same person: someone with a higher binding response tends to have a higher neutralization response.
+
+In this document we explain:
+
+- how to **simulate** data for a trial with $K=5$ treatment arms and $D=2$ correlated outcomes,
+- and what Bayesian model we fit in Stan, focusing on the **priors** and the **likelihood**.
+
+We assume:
+
+- each arm has $n=50$ subjects,
+- subjects are independent,
+- treatment groups are independent (no crossover, no shared subjects),
+- the two outcomes are correlated **within** a subject.
+
+## Study setup and notation
+
+### Indices
+
+- $k \in \{1,\dots,K\}$ indexes treatment arms, with $K=5$.
+- $j \in \{1,\dots,n\}$ indexes subjects within each arm, with $n=50$.
+- $d \in \{1,2\}$ indexes outcomes, with $D=2$.
+
+### Data
+
+For subject $j$ in arm $k$, we observe two continuous outcomes:
+$$
+\mathbf{y}_{kj} =
+\begin{pmatrix}
+y_{kj1} \\
+y_{kj2}
+\end{pmatrix}.
+$$
+
+### Arm-specific mean vectors
+
+Each arm has its own mean response vector:
+$$
+\boldsymbol\mu_k =
+\begin{pmatrix}
+\mu_{k1} \\
+\mu_{k2}
+\end{pmatrix},
+\qquad k=1,\dots,5.
+$$
+
+Intuition:
+
+- $\mu_{k1}$ is the *average* of Outcome 1 in arm $k$.
+- $\mu_{k2}$ is the *average* of Outcome 2 in arm $k$.
+
+## How we simulate the data
+
+### Step 1: Choose the arm-specific means
+
+To simulate data, we first decide on plausible values for the five mean vectors:
+$$
+\boldsymbol\mu_1,\dots,\boldsymbol\mu_5.
+$$
+
+These represent the “truth” in the simulated world. Different choices correspond to different trial scenarios (e.g., arm 3 has better responses than arm 1).
+
+### Step 2: Choose a within-subject covariance for the two outcomes
+
+Because the two outcomes are correlated within a subject, we specify a covariance matrix
+$$
+\Sigma =
+\begin{pmatrix}
+\sigma_1^2 & \sigma_{12} \\
+\sigma_{12} & \sigma_2^2
+\end{pmatrix}.
+$$
+
+- $\sigma_1^2$ is the variance of Outcome 1.
+- $\sigma_2^2$ is the variance of Outcome 2.
+- $\sigma_{12}$ controls how the two outcomes move together.
+
+It is often easier to think in terms of standard deviations and correlation. We can write:
+$$
+\Sigma = \operatorname{diag}(\mathbf{s})\,\Omega\,\operatorname{diag}(\mathbf{s}),
+$$
+where
+$$
+\mathbf{s} =
+\begin{pmatrix}
+s_1\\
+s_2
+\end{pmatrix},
+\qquad
+\Omega =
+\begin{pmatrix}
+1 & \rho \\
+\rho & 1
+\end{pmatrix}.
+$$
+
+Here:
+
+- $s_1$ and $s_2$ are the marginal standard deviations of the two outcomes,
+- $\rho$ is the correlation between outcomes within a subject.
+
+When $\rho>0$, higher values of Outcome 1 tend to occur with higher values of Outcome 2.
+
+### Step 3: Generate each subject independently
+
+For each arm $k$ and each subject $j$, we generate:
+$$
+\mathbf{y}_{kj} \sim \mathcal{N}_2(\boldsymbol\mu_k,\Sigma),
+$$
+and we do this independently across all subjects.
+
+This means:
+
+- within the same subject, the two outcomes can be correlated (through $\Sigma$),
+- but different subjects are independent, even if they are in the same arm.
+
+### Equivalent “one-line” description using a big multivariate normal
+
+If we stack all subjects’ outcome vectors into one long vector, the full data vector has dimension $2N$, where $N=Kn$.
+
+The key idea is:
+
+- independence across subjects corresponds to an identity matrix $I_N$,
+- correlation within subject corresponds to $\Sigma$,
+- together they produce a Kronecker covariance structure.
+
+Formally, if $\mathbf{y}$ stacks all subjects’ outcomes, then:
+$$
+\mathbf{y} \sim \mathcal{N}_{2N}(\boldsymbol m,\ I_N \otimes \Sigma).
+$$
+
+The Kronecker product $I_N \otimes \Sigma$ encodes: “each subject has covariance $\Sigma$, and subjects do not share covariance.”
+
+## The Bayesian model we fit in Stan
+
+We fit the same basic structure used in simulation:
+
+- arm-specific mean vectors $\boldsymbol\mu_k$,
+- a shared within-subject covariance $\Sigma$,
+- independent subjects.
+
+The Bayesian part comes from specifying:
+
+1) a **likelihood** (how data arise given parameters), and  
+2) **priors** (what we believe about parameters before seeing data).
+
+## Likelihood
+
+The likelihood states that, conditional on parameters, each subject’s bivariate outcome is normally distributed:
+
+$$
+\mathbf{y}_{kj} \mid \boldsymbol\mu_k,\Sigma
+\sim \mathcal{N}_2(\boldsymbol\mu_k,\Sigma),
+\qquad \text{independently over all } (k,j).
+$$
+
+Equivalently, the joint likelihood is:
+
+$$
+p(\{\mathbf{y}_{kj}\}\mid \{\boldsymbol\mu_k\},\Sigma)
+=
+\prod_{k=1}^5 \prod_{j=1}^{50}
+\mathcal{N}_2(\mathbf{y}_{kj}\mid \boldsymbol\mu_k,\Sigma).
+$$
+
+Key message for interpretation:
+
+- the model allows Outcome 1 and Outcome 2 to be correlated because $\Sigma$ can have a nonzero off-diagonal entry.
+
+## Priors
+
+In our discussion, we assumed **treatment arms are independent**. In Bayesian terms, this means we do **not** connect $\boldsymbol\mu_1,\dots,\boldsymbol\mu_5$ through a hierarchical structure that borrows strength across arms.
+
+### Prior for arm-specific means
+
+A simple independent prior is:
+
+$$
+\mu_{kd} \sim \mathcal{N}(0, s_\mu^2),
+\qquad k=1,\dots,5,\ d=1,2,
+$$
+with all $\mu_{kd}$ independent under the prior.
+
+Equivalently:
+$$
+\boldsymbol\mu_k \sim \mathcal{N}_2(\mathbf{0}, s_\mu^2 I_2),
+\qquad k=1,\dots,5,
+$$
+and $\boldsymbol\mu_1,\dots,\boldsymbol\mu_5$ are a priori independent.
+
+Important clarification:
+
+- This prior implies the two components of $\boldsymbol\mu_k$ are *a priori* independent.
+- It does **not** imply the observed outcomes are independent, because outcome correlation is modeled through $\Sigma$ in the likelihood.
+
+### Prior for the within-subject covariance
+
+We use a standard decomposition:
+
+$$
+\Sigma = \operatorname{diag}(\mathbf{s})\,\Omega\,\operatorname{diag}(\mathbf{s}),
+\quad \mathbf{s}=(s_1,s_2)^\top,\ s_1>0,\ s_2>0,
+$$
+where $\Omega$ is a $2\times 2$ correlation matrix.
+
+We then assign:
+
+- half-normal priors for the standard deviations:
+$$
+s_d \sim \mathcal{N}^+(0, s_y^2), \qquad d=1,2,
+$$
+- an LKJ prior for the correlation matrix:
+$$
+\Omega \sim \mathrm{LKJ}(\eta).
+$$
+
+Intuition:
+
+- the half-normal prior keeps standard deviations positive and discourages implausibly huge variability,
+- the LKJ prior is a flexible, well-behaved prior for correlation matrices; $\eta>1$ mildly favors correlations closer to 0, while still allowing strong correlations if the data support them.
+
+## Is this a hierarchical model?
+
+In this specific case, **we do not use a hierarchical model across treatment arms**, because you stated:
+
+- treatment groups are independent,
+- and you do not want borrowing of information across arms.
+
+So the model is **not hierarchical in the sense of partial pooling across arms**.
+
+What is shared across arms is only the within-subject covariance $\Sigma$. Sharing $\Sigma$ is not the same as hierarchical pooling of means; it simply reflects the assumption that the two outcomes have a similar correlation structure regardless of treatment.
+
+### When would we use a hierarchical model?
+
+A hierarchical model would be appropriate if we believed the arm mean vectors are exchangeable and should borrow strength:
+
+$$
+\boldsymbol\mu_k \mid \boldsymbol\mu_0, V_0 \stackrel{\text{ind}}{\sim} \mathcal{N}_2(\boldsymbol\mu_0, V_0),
+$$
+
+with priors on $\boldsymbol\mu_0$ and $V_0$. This introduces partial pooling across arms.
+
+But that is a different scientific assumption than “arms are independent.”
+
+## Summary
+
+- Each subject provides a **2-dimensional** continuous response vector.
+- The two outcomes are correlated within subject through a covariance matrix $\Sigma$.
+- Subjects are independent, and treatment arms are not linked by a hierarchical prior.
+- The fitted model combines:
+  - likelihood: $\mathbf{y}_{kj}\mid \boldsymbol\mu_k,\Sigma \sim \mathcal{N}_2(\boldsymbol\mu_k,\Sigma)$,
+  - priors: independent normal priors for $\boldsymbol\mu_k$, and an LKJ-based prior for $\Sigma$.
+
+This framework is a common starting point for multivariate immunogenicity analysis in early-phase trials.
