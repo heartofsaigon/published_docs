@@ -1,0 +1,299 @@
+---
+title: "MOBO vs MFBO vs Mixed-Domain Uni-Objective BO: What Changes and Why It Matters"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+:::callout-title
+[heartofsaigon/published_docs/06]
+:::
+
+## Big picture
+
+Bayesian optimization (BO) is a sequential method for optimizing expensive black-box functions using:
+
+1) a probabilistic surrogate model (often a Gaussian process, GP), and  
+2) an acquisition function that recommends the next evaluation.
+
+Two extensions that are often confused are:
+
+- **Multi-objective BO (MOBO):** multiple *goals* at the end (tradeoffs).
+- **Multi-fidelity BO (MFBO):** multiple *measurement fidelities* during learning, but a single *target* at the end.
+
+A third concept that looks similar on paper is:
+
+- **Mixed-domain uni-objective BO:** one scalar objective $g(x,s)$ defined on a domain that includes both continuous and categorical variables, e.g. $x \in \mathbb{R}$ and $s \in \{1,2\}$.
+
+This document separates these settings and shows the mechanism that lets low fidelity contribute to learning the high-fidelity target.
+
+## Notation (minimization)
+
+- Decision/design variable: $x \in \mathcal{X}$.
+- Fidelity indicator: $s \in \{L,H\}$ or equivalently $s \in \{1,2\}$.
+- Observations: $Y(x,s)$ is the noisy measurement you obtain if you evaluate action $(x,s)$.
+- Conditional mean functions:
+  $$
+  f_s(x) := \mathbb{E}[Y(x,s)].
+  $$
+
+## Setting 1: MOBO (multiple goals)
+
+### Problem definition
+
+You have $m \ge 2$ objectives and you genuinely care about all of them:
+$$
+\text{minimize } \mathbf{f}(x) = \big(f_1(x), \dots, f_m(x)\big).
+$$
+
+### Output
+
+There is typically no single best point. The output is a **Pareto set** (tradeoff designs), often summarized by a Pareto front in objective space.
+
+### Example (vaccine trial)
+
+Let $x$ denote a regimen. You might minimize:
+- $f_1(x)$: negative immunogenicity (smaller means stronger response),
+- $f_2(x)$: reactogenicity burden,
+- $f_3(x)$: logistics/manufacturing complexity.
+
+These are distinct endpoints, not approximations of each other.
+
+## Setting 2: MFBO (one goal, multiple measurement fidelities)
+
+### Problem definition
+
+You fix a **target fidelity** (usually high fidelity) and optimize only that:
+$$
+\text{minimize } f_H(x).
+$$
+
+But during learning you can choose actions in the larger action space:
+$$
+(x,s) \in \mathcal{X}\times\{L,H\}.
+$$
+
+### Output
+
+The final recommendation is in $x$ only:
+$$
+x^\ast \in \arg\min_x f_H(x).
+$$
+
+You do not typically output $s^\ast$, because $s$ is not the scientific objective; it is the measurement mechanism.
+
+### Example (vaccine trial pipeline)
+
+- High fidelity $H$: late timepoint neutralization assay, complete lab pipeline, larger sample size.
+- Low fidelity $L$: early binding assay, fast readout, smaller sample size.
+
+The target is still high fidelity (what you trust for down-selection), but low fidelity can be used to screen candidates cheaply.
+
+## Setting 3: Mixed-domain uni-objective BO on $X=\mathcal{X}\times\{1,2\}$
+
+### Problem definition
+
+Here you truly have a single scalar objective defined on the mixed domain:
+$$
+g:\ \mathcal{X}\times\{1,2\}\to\mathbb{R}, \qquad (x,s)\mapsto g(x,s),
+$$
+and you solve
+$$
+(x^\ast,s^\ast)\in \arg\min_{x,s} g(x,s).
+$$
+
+### What is a concrete form of $g(x,s)$?
+
+A simple, specific example is a two-sheet quadratic:
+$$
+g(x,s)=(x-\mu_s)^2 + b_s,
+$$
+so
+$$
+g(x,1)=(x-\mu_1)^2+b_1,\qquad g(x,2)=(x-\mu_2)^2+b_2.
+$$
+
+This is meaningful when $s$ is a real, deployable choice (two architectures, two operating modes, two device configurations), not a proxy measurement.
+
+### Why this is not MFBO
+
+In mixed-domain uni-objective BO, you are allowed to choose $s$ in the final answer because $g(x,s)$ is the real objective.
+
+In MFBO, the real objective is $f_H(x)$ and $s$ is only used to decide how to measure during learning.
+
+## Why MFBO is not “just BO in 2D”
+
+It is tempting to define a 2D objective
+$$
+g(x,s)=f_s(x),
+$$
+and then run standard BO over $(x,s)$.
+
+Technically, this is a uni-objective problem on a mixed domain. Practically, it changes the decision problem:
+
+- Optimizing $\min_{x,s} g(x,s)$ asks for the best pair $(x,s)$.
+- MFBO asks for the best $x$ under $H$ only, i.e. $\min_x f_H(x)$.
+
+If low fidelity is biased or simply operates on a different scale, $\min_{x,s} f_s(x)$ will often select $s=L$, which is not a valid scientific conclusion if you must decide at $H$.
+
+## The MFBO mechanism: how $y_L$ contributes to learning $f_H$
+
+The essential ingredient is a model that couples fidelities, so that observing $Y(x,L)$ changes your posterior beliefs about $f_H(\cdot)$.
+
+### A standard coupling model (autoregressive / co-kriging style)
+
+Introduce latent mean functions $f_L(x)$ and $f_H(x)$ linked by:
+$$
+f_H(x)=\rho f_L(x)+\delta(x),
+$$
+with observations:
+$$
+Y(x,L)=f_L(x)+\varepsilon_L,\qquad
+Y(x,H)=f_H(x)+\varepsilon_H.
+$$
+
+- $f_H(x)$ is the target.
+- $f_L(x)$ is auxiliary (instrumental) because it helps predict $f_H(x)$.
+- $\rho$ and $\delta(x)$ determine how informative low fidelity is about high fidelity.
+
+### The “mapping” from $(x,L)$ to updated beliefs about $f_H$
+
+Under Gaussian assumptions, conditioning yields the update:
+$$
+\mu_H^{\text{new}}(x^\prime)
+=
+\mu_H(x^\prime)
++
+\frac{\text{Cov}\big(f_H(x^\prime),Y(x,L)\big)}{\text{Var}\big(Y(x,L)\big)}
+\Big(y_L-\mu_L(x)\Big),
+$$
+
+$$
+\sigma_{H,\text{new}}^2(x^\prime)
+=
+\sigma_H^2(x^\prime)
+-
+\frac{\text{Cov}\big(f_H(x^\prime),Y(x,L)\big)^2}{\text{Var}\big(Y(x,L)\big)}.
+$$
+
+This shows the contribution of low fidelity precisely:
+
+- If $\text{Cov}\big(f_H(x^\prime),Y(x,L)\big)=0$, then low fidelity does not update $f_H$ at all.
+- If that covariance is large and $c(L)\ll c(H)$, low fidelity can be very cost-effective early in the search.
+
+## Acquisition functions: side-by-side distinction
+
+In both MFBO and mixed-domain uni-objective BO, the algorithm evaluates a score for candidate actions $(x,s)$ and selects the next action. The difference is what the score is trying to improve.
+
+### Mixed-domain uni-objective BO on $g(x,s)$
+
+Define the current best
+$$
+g_{\min}=\min_{x,s} \mu_g(x,s),
+$$
+where $\mu_g(x,s)$ is the predictive mean for $g$.
+
+If the predictive distribution for $g(x,s)$ is normal with mean $\mu_g(x,s)$ and SD $\sigma_g(x,s)$, expected improvement is:
+$$
+\text{EI}_g(x,s)
+=
+(g_{\min}-\mu_g(x,s))\Phi(z_{xs}) + \sigma_g(x,s)\phi(z_{xs}),
+\qquad
+z_{xs}=\frac{g_{\min}-\mu_g(x,s)}{\sigma_g(x,s)}.
+$$
+
+This is improvement relative to the best value over the entire domain $(x,s)$.
+
+### MFBO: acquisition scores actions $(x,s)$ by their value for $f_H$
+
+MFBO defines improvement only in the $H$-space.
+
+Let the current best high-fidelity benchmark be
+$$
+f_{\min}=\min_x \mu_H(x).
+$$
+
+High-fidelity EI at $x$ is computed from the posterior of $f_H(x)$:
+$$
+\text{EI}_H(x)
+=
+(f_{\min}-\mu_H(x))\Phi(z_x)+\sigma_H(x)\phi(z_x),
+\qquad
+z_x=\frac{f_{\min}-\mu_H(x)}{\sigma_H(x)}.
+$$
+
+To decide the next evaluation, MFBO scores each action $(x,s)$ by how much it is expected to improve decisions about $f_H$, often with a cost penalty.
+
+A conceptual one-step lookahead form is:
+$$
+a_{\text{MF}}(x,s)
+=
+\frac{
+\mathbb{E}\Big[\max_{x^\prime}\text{EI}_H^{\text{new}}(x^\prime)\ \Big|\ \text{sample }(x,s)\Big]
+-
+\max_{x^\prime}\text{EI}_H(x^\prime)
+}{
+c(s)
+}.
+$$
+
+Here, $s=L$ can only score well if sampling $Y(x,L)$ meaningfully updates the posterior for $f_H(\cdot)$ through cross-fidelity dependence.
+
+## A small numeric example that shows the MFBO link
+
+Suppose at a candidate $x$ your current posterior for $f_H(x)$ is
+$$
+f_H(x)\mid \mathcal{D} \sim \text{N}(\mu_H,\sigma_H^2),\qquad \mu_H=1.0,\ \sigma_H=1.0,
+$$
+and $\mu_L(x)=1.2$.
+
+Assume:
+$$
+\text{Var}(Y(x,L))=2.5,\qquad \text{Cov}\big(f_H(x),Y(x,L)\big)=1.2.
+$$
+
+If you evaluate low fidelity and observe $y_L=0.0$, then the posterior mean updates to:
+$$
+\mu_H^{\text{new}}(x)=1.0+\frac{1.2}{2.5}(0.0-1.2)=0.424,
+$$
+and the posterior variance shrinks:
+$$
+\sigma_{H,\text{new}}^2(x)=1.0-\frac{1.2^2}{2.5}=0.424.
+$$
+
+This is the concrete connection:
+
+- You did not observe $f_H(x)$ directly.
+- You observed $y_L$ and, through cross-fidelity covariance, your belief about $f_H(x)$ moved and sharpened.
+- Any acquisition defined on $f_H$ (EI, KG, entropy-based) changes accordingly.
+
+## Practical MFBO workflow (binary $L/H$)
+
+1. Specify the target: optimize $f_H(x)$.
+2. Fit a multi-fidelity surrogate that couples $L$ and $H$ (co-kriging / multi-output GP / discrepancy model).
+3. At iteration $n$, compute $a_n(x,L)$ and $a_n(x,H)$ over candidate $x$.
+4. Choose $(x_{n+1},s_{n+1})\in \arg\max_{x,s} a_n(x,s)$.
+5. Update the posterior and repeat.
+6. Recommend $x^\ast\in \arg\min_x \mu_H(x)$ and, if possible, confirm with $H$.
+
+
+
+
