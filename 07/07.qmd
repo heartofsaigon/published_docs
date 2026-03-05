@@ -1,5 +1,5 @@
 ---
-title: "Explaining Model 1 from Harari et al. (2024): A Bayesian Multi-Arm Vaccine Trial Model"
+title: "Explaining Model 1 from Harari et al. @harari2024adaptive: A Bayesian Multi-Arm Vaccine Trial Model"
 author: " "
 date: today
 format: 
@@ -29,7 +29,7 @@ heartofsaigon/published_docs/07
 
 ## Overview
 
-This note explains **Model 1** from Harari et al. (2024), which is a Bayesian model for a **multi-arm vaccine trial with a common control**.
+This note explains **Model 1** from Harari et al. @harari2024adaptive, which is a Bayesian model for a **multi-arm vaccine trial with a common control**.
 
 The main goal is to estimate the **vaccine efficacy** of each active vaccine arm relative to the control arm, using a model that is simple enough to update repeatedly during an adaptive trial.
 
