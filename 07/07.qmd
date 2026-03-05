@@ -1,0 +1,757 @@
+---
+title: "Explaining Model 1 from Harari et al. (2024): A Bayesian Multi-Arm Vaccine Trial Model"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: ../references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+:::callout-title
+heartofsaigon/published_docs/07
+:::
+
+## Overview
+
+This note explains **Model 1** from Harari et al. (2024), which is a Bayesian model for a **multi-arm vaccine trial with a common control**.
+
+The main goal is to estimate the **vaccine efficacy** of each active vaccine arm relative to the control arm, using a model that is simple enough to update repeatedly during an adaptive trial.
+
+We will explain:
+
+1. what the observed data are,
+
+2. what the model assumes,
+
+3. why Poisson, multinomial, and Dirichlet distributions appear,
+
+4. what the likelihood and prior are,
+
+5. how vaccine efficacy is defined,
+
+6. what is treated as data versus parameters in a Stan implementation.
+
+Throughout, we assume students already know the basic probability distributions from a probability course.
+
+## Trial setup
+
+Suppose there are $K$ active vaccine arms and one common control arm.
+
+Let
+
+- $i = 1, \dots, K$ index the active vaccine arms,
+- $\mathrm{ctrl}$ denote the control arm.
+
+At calendar time $t$, define:
+
+- $n_i(t)$ = number of observed cases in vaccine arm $i$,
+- $n_{\mathrm{ctrl}}(t)$ = number of observed cases in the control arm,
+- $n_{\mathrm{total}}(t) = n_{\mathrm{ctrl}}(t) + \sum_{i=1}^K n_i(t)$ = total number of observed cases across all arms.
+
+The paper is written for an **event-driven** setting, so the case counts are the key outcomes.
+
+## The scientific meaning of vaccine efficacy
+
+Let
+
+- $\mu_{\mathrm{ctrl}}$ = control-arm event rate,
+- $\mu_i$ = event rate in vaccine arm $i$.
+
+The vaccine efficacy for arm $i$ is defined by the **relative reduction in event rate** compared with control:
+
+$$
+v_i = 1 - \frac{\mu_i}{\mu_{\mathrm{ctrl}}}.
+$$
+
+Equivalently,
+
+$$
+\mu_i = (1 - v_i)\mu_{\mathrm{ctrl}}.
+$$
+
+This explains why the model uses $(1-v_i)$ rather than $v_i$ itself.
+
+Interpretation:
+
+- if $v_i = 0$, there is no protection, so $\mu_i = \mu_{\mathrm{ctrl}}$,
+- if $v_i = 0.5$, the event rate is reduced by $50\%$, so $\mu_i = 0.5\mu_{\mathrm{ctrl}}$,
+- if $v_i = 1$, there is complete protection, so $\mu_i = 0$.
+
+## Allocation proportions
+
+Let
+
+- $q_i$ = allocation proportion for vaccine arm $i$,
+- $q_{\mathrm{ctrl}}$ = allocation proportion for the control arm,
+
+with
+
+$$
+q_{\mathrm{ctrl}} + \sum_{i=1}^K q_i = 1.
+$$
+
+These are treated as **known design quantities**. They come from the randomization design of the trial.
+
+For example, in a trial with two vaccine arms and one control arm, we might have
+
+$$
+(q_1, q_2, q_{\mathrm{ctrl}}) = (0.3, 0.3, 0.4).
+$$
+
+## First layer: Poisson count model
+
+The paper begins by modeling the accumulated number of cases in each arm as a Poisson process over trial calendar time.
+
+In particular,
+
+$$
+n_{\mathrm{ctrl}}(t) \sim \mathrm{Poisson}(\lambda_{\mathrm{ctrl}} t),
+$$
+
+and for each active arm $i$,
+
+$$
+n_i(t) \sim \mathrm{Poisson}(\lambda_i t).
+$$
+
+### Reminder: Poisson pmf
+
+If $Y \sim \mathrm{Poisson}(\lambda)$, then
+
+$$
+P(Y=y) = \frac{e^{-\lambda}\lambda^y}{y!}, \qquad y = 0,1,2,\dots
+$$
+
+and
+
+$$
+E[Y] = \lambda, \qquad \mathrm{Var}(Y) = \lambda.
+$$
+
+In this vaccine model, the mean number of observed cases in an arm up to time $t$ is the arm-specific rate multiplied by $t$.
+
+## Why are the arm-specific rates proportional to $q \mu$?
+
+The paper assumes
+
+$$
+\lambda_{\mathrm{ctrl}} \propto q_{\mathrm{ctrl}}\mu_{\mathrm{ctrl}},
+$$
+
+and
+
+$$
+\lambda_i \propto q_i(1-v_i)\mu_{\mathrm{ctrl}}, \qquad i=1,\dots,K.
+$$
+
+This is an **arm-level count-rate statement**, not an individual-level event-rate statement.
+
+The logic is:
+
+- $q_i$ describes how much of the total trial allocation goes to arm $i$,
+- $(1-v_i)\mu_{\mathrm{ctrl}}$ is the remaining event rate in arm $i$ relative to control,
+- therefore the arm-level case accumulation rate is proportional to
+
+$$
+\text{allocation share} \times \text{per-person event rate}.
+$$
+
+So the arm-level Poisson intensity is proportional to
+
+$$
+q_i(1-v_i)\mu_{\mathrm{ctrl}}.
+$$
+
+## Unconditioned versus conditioned model
+
+This distinction is very important.
+
+### Unconditioned model
+
+The **unconditioned** model is the original independent Poisson model:
+
+$$
+n_{\mathrm{ctrl}}(t)\sim \mathrm{Poisson}(\lambda_{\mathrm{ctrl}}t), \qquad
+n_i(t)\sim \mathrm{Poisson}(\lambda_i t), \quad i=1,\dots,K.
+$$
+
+Here, the total number of cases
+
+$$
+n_{\mathrm{total}}(t)=n_{\mathrm{ctrl}}(t)+\sum_{i=1}^K n_i(t)
+$$
+
+is itself random.
+
+### Conditioned model
+
+The paper then **conditions on the observed total number of cases** $n_{\mathrm{total}}(t)$.
+
+Once we do that, we no longer model the total count itself. We only model how those total cases are distributed across arms.
+
+This is where the multinomial model appears.
+
+## Review of the key Poisson property
+
+A standard probability result says:
+
+If
+
+$$
+Y_1,\dots,Y_m
+$$
+
+are independent Poisson random variables with means
+
+$$
+\lambda_1,\dots,\lambda_m,
+$$
+
+then conditional on
+
+$$
+N = \sum_{j=1}^m Y_j = n,
+$$
+
+the vector
+
+$$
+(Y_1,\dots,Y_m)\mid N=n
+$$
+
+follows a multinomial distribution with probabilities
+
+$$
+p_j = \frac{\lambda_j}{\sum_{\ell=1}^m \lambda_\ell}.
+$$
+
+For $m=2$, this reduces to a binomial distribution.
+
+### Reminder: multinomial pmf
+
+If
+
+$$
+(Y_1,\dots,Y_m)\sim \mathrm{Multinomial}(n; p_1,\dots,p_m),
+$$
+
+then
+
+$$
+P(Y_1=y_1,\dots,Y_m=y_m)
+=
+\frac{n!}{y_1!\cdots y_m!}\prod_{j=1}^m p_j^{y_j},
+$$
+
+for nonnegative integers $y_1,\dots,y_m$ satisfying
+
+$$
+\sum_{j=1}^m y_j = n,
+\qquad
+\sum_{j=1}^m p_j = 1.
+$$
+
+## Applying that property to the vaccine model
+
+Because the arm-specific counts are modeled as independent Poisson counts, once we condition on the total number of observed cases, we obtain
+
+$$
+\bigl(n_1(t),\dots,n_K(t),n_{\mathrm{ctrl}}(t)\bigr)\mid n_{\mathrm{total}}(t)
+\sim
+\mathrm{Multinomial}\bigl(n_{\mathrm{total}}(t); \theta_1,\dots,\theta_K,\theta_{\mathrm{ctrl}}\bigr).
+$$
+
+The cell probabilities are proportional to the corresponding Poisson intensities. Therefore,
+
+$$
+\theta_i
+=
+\frac{q_i(1-v_i)}{q_{\mathrm{ctrl}} + \sum_{j=1}^K q_j(1-v_j)},
+\qquad i=1,\dots,K,
+$$
+
+and
+
+$$
+\theta_{\mathrm{ctrl}}
+=
+\frac{q_{\mathrm{ctrl}}}{q_{\mathrm{ctrl}} + \sum_{j=1}^K q_j(1-v_j)}.
+$$
+
+These $\theta$'s are the probabilities that, **given one observed case has occurred somewhere in the trial**, that case came from a particular arm.
+
+## Why conditioning is useful
+
+Conditioning on $n_{\mathrm{total}}(t)$ removes nuisance scale terms such as:
+
+- the common proportionality constant,
+- the baseline event rate scale,
+- the calendar time factor $t$.
+
+After conditioning, inference depends only on the **relative split of cases across arms**, which is much simpler.
+
+This is why the paper ends up with a multinomial likelihood rather than a product of Poisson likelihoods.
+
+## Recovering vaccine efficacy from $\theta$
+
+The paper inverts the relationship between $\theta_i$ and $v_i$ to obtain
+
+$$
+v_i = 1 - \frac{\theta_i}{\theta_{\mathrm{ctrl}}}\frac{q_{\mathrm{ctrl}}}{q_i}.
+$$
+
+This formula is important because the model is fitted in terms of $\theta$, but the scientific quantity of interest is $v_i$.
+
+So the workflow is:
+
+1. infer $\theta$,
+
+2. transform posterior draws of $\theta$ into posterior draws of $v_i$.
+
+## The likelihood in Model 1
+
+Once we condition on $n_{\mathrm{total}}(t)$, the likelihood is multinomial.
+
+Let
+
+$$
+\boldsymbol{\theta} = (\theta_1,\dots,\theta_K,\theta_{\mathrm{ctrl}}).
+$$
+
+Then the likelihood is
+
+$$
+\bigl(n_1(t),\dots,n_K(t),n_{\mathrm{ctrl}}(t)\bigr)\mid n_{\mathrm{total}}(t), \boldsymbol{\theta}
+\sim
+\mathrm{Multinomial}\bigl(n_{\mathrm{total}}(t), \boldsymbol{\theta}\bigr).
+$$
+
+Therefore, the full likelihood pmf is
+
+$$
+P\bigl(n_1,\dots,n_K,n_{\mathrm{ctrl}}\mid n_{\mathrm{total}},\boldsymbol{\theta}\bigr)
+=
+\frac{n_{\mathrm{total}}!}{n_1!\cdots n_K!n_{\mathrm{ctrl}}!}
+\left(\prod_{i=1}^K \theta_i^{n_i}\right)\theta_{\mathrm{ctrl}}^{n_{\mathrm{ctrl}}}.
+$$
+
+The likelihood kernel is
+
+$$
+L(\boldsymbol{\theta}\mid \text{data})
+\propto
+\left(\prod_{i=1}^K \theta_i^{n_i}\right)\theta_{\mathrm{ctrl}}^{n_{\mathrm{ctrl}}}.
+$$
+
+## The prior in Model 1
+
+The paper places a Dirichlet prior on $\boldsymbol{\theta}$:
+
+$$
+\boldsymbol{\theta} \sim \mathrm{Dirichlet}(\alpha_1,\dots,\alpha_K,\alpha_{\mathrm{ctrl}}).
+$$
+
+### Reminder: Dirichlet density
+
+If
+
+$$
+\boldsymbol{\theta} = (\theta_1,\dots,\theta_m)
+$$
+
+lies on the simplex, meaning
+
+$$
+\theta_j > 0, \qquad \sum_{j=1}^m \theta_j = 1,
+$$
+
+then the Dirichlet density is
+
+$$
+p(\boldsymbol{\theta})
+=
+\frac{\Gamma\left(\sum_{j=1}^m \alpha_j\right)}{\prod_{j=1}^m \Gamma(\alpha_j)}
+\prod_{j=1}^m \theta_j^{\alpha_j-1}.
+$$
+
+The support is the simplex.
+
+### Interpretation of the hyperparameters
+
+The quantities
+
+$$
+\alpha_1,\dots,\alpha_K,\alpha_{\mathrm{ctrl}}
+$$
+
+are **fixed hyperparameters**, not random parameters.
+
+They control:
+
+- the prior mean of $\theta$,
+- the prior concentration or spread.
+
+Under a Dirichlet prior,
+
+$$
+E[\theta_j] = \frac{\alpha_j}{\sum_{\ell=1}^m \alpha_\ell}.
+$$
+
+A useful interpretation is that the $\alpha_j$ behave like **prior pseudo-counts**.
+
+## Posterior distribution
+
+Because Dirichlet is conjugate to multinomial, the posterior is again Dirichlet:
+
+$$
+\boldsymbol{\theta}\mid n_1(t),\dots,n_K(t),n_{\mathrm{ctrl}}(t)
+\sim
+\mathrm{Dirichlet}\bigl(
+\alpha_1+n_1(t),\dots,\alpha_K+n_K(t),\alpha_{\mathrm{ctrl}}+n_{\mathrm{ctrl}}(t)
+\bigr).
+$$
+
+This is one of the main reasons the model is computationally convenient.
+
+## Why the posterior update works
+
+The prior kernel is
+
+$$
+\pi(\boldsymbol{\theta})
+\propto
+\left(\prod_{i=1}^K \theta_i^{\alpha_i-1}\right)\theta_{\mathrm{ctrl}}^{\alpha_{\mathrm{ctrl}}-1}.
+$$
+
+The likelihood kernel is
+
+$$
+L(\boldsymbol{\theta}\mid \text{data})
+\propto
+\left(\prod_{i=1}^K \theta_i^{n_i}\right)\theta_{\mathrm{ctrl}}^{n_{\mathrm{ctrl}}}.
+$$
+
+Multiplying them gives
+
+$$
+\pi(\boldsymbol{\theta}\mid \text{data})
+\propto
+\left(\prod_{i=1}^K \theta_i^{\alpha_i+n_i-1}\right)\theta_{\mathrm{ctrl}}^{\alpha_{\mathrm{ctrl}}+n_{\mathrm{ctrl}}-1},
+$$
+
+which is exactly the kernel of a Dirichlet distribution.
+
+## What is given and what is unknown?
+
+For this model, it is very helpful to classify all quantities.
+
+### Fixed by design
+
+These are known before the analysis:
+
+$$
+q_1,\dots,q_K,q_{\mathrm{ctrl}}.
+$$
+
+These are the allocation proportions.
+
+### Fixed by the analyst
+
+These are prior hyperparameters:
+
+$$
+\alpha_1,\dots,\alpha_K,\alpha_{\mathrm{ctrl}}.
+$$
+
+### Observed data
+
+At an interim analysis, we observe:
+
+$$
+n_1(t),\dots,n_K(t),n_{\mathrm{ctrl}}(t).
+$$
+
+Then
+
+$$
+n_{\mathrm{total}}(t)=n_{\mathrm{ctrl}}(t)+\sum_{i=1}^K n_i(t)
+$$
+
+is also known as an observed quantity.
+
+### Unknown model parameter
+
+The main parameter of the fitted conditioned model is
+
+$$
+\boldsymbol{\theta}.
+$$
+
+### Derived scientific quantity
+
+The vaccine efficacies are derived from $\boldsymbol{\theta}$:
+
+$$
+v_i = 1 - \frac{\theta_i}{\theta_{\mathrm{ctrl}}}\frac{q_{\mathrm{ctrl}}}{q_i}.
+$$
+
+## Prior selection in the paper
+
+A subtle point in the paper is that the authors do **not** recommend choosing the prior directly by thinking on the $\theta$ scale, because they consider the $\theta$ scale unintuitive.
+
+Instead, they suggest choosing the Dirichlet hyperparameters so that the induced prior on vaccine efficacy has a desired property, such as a prior probability of efficacy equal to $0.5$.
+
+In practice, their idea is:
+
+1. pick a value for $\alpha_{\mathrm{vax}}$,
+
+2. solve numerically for $\alpha_{\mathrm{ctrl}}$ so that the induced prior probability
+
+$$
+P(v_i > 0)
+$$
+
+matches a target such as $0.5$.
+
+So the prior is still Dirichlet on $\boldsymbol{\theta}$, but the hyperparameters are calibrated using a quantity that is easier to interpret scientifically.
+
+## A small illustrative example
+
+Suppose there is one vaccine arm and one control arm.
+
+Assume
+
+$$
+q_{\mathrm{vax}} = 0.4, \qquad q_{\mathrm{ctrl}} = 0.6.
+$$
+
+Suppose at an interim analysis we observe
+
+$$
+n_{\mathrm{vax}} = 12, \qquad n_{\mathrm{ctrl}} = 20.
+$$
+
+Then
+
+$$
+n_{\mathrm{total}} = 32.
+$$
+
+If we choose the prior
+
+$$
+(\theta_{\mathrm{vax}}, \theta_{\mathrm{ctrl}}) \sim \mathrm{Dirichlet}(1,1),
+$$
+
+then the posterior is
+
+$$
+(\theta_{\mathrm{vax}}, \theta_{\mathrm{ctrl}})\mid \text{data}
+\sim
+\mathrm{Dirichlet}(13,21).
+$$
+
+Now from each posterior draw of $(\theta_{\mathrm{vax}}, \theta_{\mathrm{ctrl}})$, we can compute
+
+$$
+v = 1 - \frac{\theta_{\mathrm{vax}}}{\theta_{\mathrm{ctrl}}}\frac{q_{\mathrm{ctrl}}}{q_{\mathrm{vax}}}
+=
+1 - \frac{\theta_{\mathrm{vax}}}{\theta_{\mathrm{ctrl}}}\frac{0.6}{0.4}.
+$$
+
+This gives a posterior distribution for vaccine efficacy.
+
+## Why the model is convenient for Stan
+
+Although the paper emphasizes conjugate updating, we may still fit the model in Stan.
+
+The most natural Stan implementation uses the **conditioned version** of the model:
+
+- likelihood: multinomial,
+- prior: Dirichlet,
+- parameter: $\boldsymbol{\theta}$,
+- generated quantities: $v_1,\dots,v_K$.
+
+This is simpler than coding the original independent Poisson formulation, because the nuisance scale factors have already been removed by conditioning on the total number of cases.
+
+## Stan-oriented model specification
+
+For Stan, it is useful to think in terms of the blocks.
+
+### Data block
+
+The data would include:
+
+- $K$,
+- the observed case counts $n_1,\dots,n_K,n_{\mathrm{ctrl}}$,
+- the known allocation proportions $q_1,\dots,q_K,q_{\mathrm{ctrl}}$,
+- the fixed prior hyperparameters $\alpha_1,\dots,\alpha_K,\alpha_{\mathrm{ctrl}}$.
+
+You may also compute
+
+$$
+n_{\mathrm{total}} = n_{\mathrm{ctrl}} + \sum_{i=1}^K n_i
+$$
+
+either before passing the data or inside transformed data.
+
+### Parameters block
+
+The model parameter is a simplex:
+
+$$
+\boldsymbol{\theta} = (\theta_1,\dots,\theta_K,\theta_{\mathrm{ctrl}}).
+$$
+
+So in Stan, $\boldsymbol{\theta}$ belongs naturally in a simplex parameter declaration.
+
+### Model block
+
+The prior contribution is
+
+$$
+\boldsymbol{\theta} \sim \mathrm{Dirichlet}(\alpha_1,\dots,\alpha_K,\alpha_{\mathrm{ctrl}}).
+$$
+
+The likelihood contribution is
+
+$$
+(n_1,\dots,n_K,n_{\mathrm{ctrl}})\mid \boldsymbol{\theta}
+\sim
+\mathrm{Multinomial}(n_{\mathrm{total}},\boldsymbol{\theta}).
+$$
+
+### Generated quantities block
+
+For each posterior draw of $\boldsymbol{\theta}$, compute
+
+$$
+v_i = 1 - \frac{\theta_i}{\theta_{\mathrm{ctrl}}}\frac{q_{\mathrm{ctrl}}}{q_i},
+\qquad i=1,\dots,K.
+$$
+
+Then summaries such as posterior means, credible intervals, and posterior probabilities of efficacy can be estimated from the draws.
+
+## Why we do not fit $v_i$ directly in this Stan formulation
+
+It may seem more natural to put a prior directly on $v_i$, since that is the scientific quantity of interest.
+
+However, the paper is built around a simpler conjugate structure in terms of $\theta$:
+
+- multinomial likelihood,
+- Dirichlet prior,
+- deterministic transformation from $\theta$ to $v$.
+
+That is why the most faithful Stan implementation keeps $\theta$ as the model parameter and treats $v_i$ as a transformed quantity.
+
+## Interpretation of posterior probability of efficacy
+
+For vaccine arm $i$, the posterior probability of efficacy is
+
+$$
+P(v_i > 0 \mid \text{data}).
+$$
+
+In practice, if we have posterior draws
+
+$$
+v_i^{(1)}, \dots, v_i^{(S)},
+$$
+
+then we estimate this probability by
+
+$$
+\widehat{P}(v_i > 0 \mid \text{data})
+=
+\frac{1}{S}\sum_{s=1}^S I\bigl(v_i^{(s)} > 0\bigr),
+$$
+
+where $I(\cdot)$ is the indicator function.
+
+This quantity is what the adaptive decision rules in the paper monitor over time.
+
+## What students should remember
+
+The key steps of Model 1 are:
+
+1. model arm-specific case counts as Poisson counts,
+
+2. condition on the total number of cases,
+
+3. obtain a multinomial likelihood for how cases are split across arms,
+
+4. place a Dirichlet prior on the multinomial probabilities,
+
+5. update to a Dirichlet posterior,
+
+6. transform posterior draws of $\theta$ into posterior draws of vaccine efficacy $v_i$.
+
+So the whole model can be summarized as
+
+$$
+\text{Poisson counts}
+\;\Longrightarrow\;
+\text{condition on total}
+\;\Longrightarrow\;
+\text{Multinomial likelihood}
+\;\Longrightarrow\;
+\text{Dirichlet prior}
+\;\Longrightarrow\;
+\text{Dirichlet posterior}
+\;\Longrightarrow\;
+\text{posterior inference on } v_i.
+$$
+
+## Final summary
+
+Model 1 is a very elegant Bayesian model because it reduces a multi-arm vaccine trial problem to a familiar conjugate pair from probability theory:
+
+- **likelihood**: multinomial,
+- **prior**: Dirichlet.
+
+The scientific interpretation of vaccine efficacy is carried through the transformation
+
+$$
+v_i = 1 - \frac{\theta_i}{\theta_{\mathrm{ctrl}}}\frac{q_{\mathrm{ctrl}}}{q_i}.
+$$
+
+For Stan, the essential pieces are:
+
+- observed case counts,
+- fixed allocation probabilities,
+- fixed Dirichlet hyperparameters,
+- simplex parameter $\boldsymbol{\theta}$,
+- multinomial likelihood,
+- generated quantities for vaccine efficacy.
+
+This makes the model both mathematically clean and computationally convenient for repeated interim monitoring in an adaptive trial.
+
+## Short checklist for a Stan implementation
+
+Before coding, confirm that you have:
+
+- the number of active vaccine arms $K$,
+- the observed counts in each arm,
+- the control count,
+- the allocation proportions,
+- the Dirichlet hyperparameters,
+- the formula to transform $\theta$ into vaccine efficacy.
+
+Once those are specified, the Stan model is structurally very simple.
+
