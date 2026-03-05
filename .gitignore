@@ -47,3 +47,9 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Ignore any file or folder whose name starts with NOPUB_
+NOPUB_*
+**/NOPUB_*
+
+
