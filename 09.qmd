@@ -23,6 +23,10 @@ editor_options:
   chunk_output_type: console
 ---
 
+:::callout-title
+heartofsaigon/published_docs/09
+:::
+
 # How to Distinguish Isotropic vs Anisotropic and Stationary vs Nonstationary GP Kernels (with Vaccine-Regimen Intuition)
 
 ## What each word means
