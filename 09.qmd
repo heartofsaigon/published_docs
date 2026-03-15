@@ -1,0 +1,490 @@
+---
+title: "Isotropic vs. anisotropic AND  Hausdorff Distance vs. Inverted generational distance (IGD)"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+# How to Distinguish Isotropic vs Anisotropic and Stationary vs Nonstationary GP Kernels (with Vaccine-Regimen Intuition)
+
+## What each word means
+
+In a Gaussian process (GP), we model an unknown latent function $f(x)$ such as the true regimen-level mean outcome (e.g., mean log-titre) or a latent scale for a binary endpoint (e.g., log-odds of AE).
+
+A GP is defined by a kernel (covariance function) $k(x,x')$:
+
+$$
+f(\cdot) \sim \mathrm{GP}\big(m(\cdot), k(\cdot,\cdot)\big).
+$$
+
+Two different ideas are often mixed up:
+
+- **Shape of $f(x)$**: increasing/decreasing, bell-shaped, plateau, etc. This is about the realized function.
+- **Kernel properties**: how the model links $f(x)$ and $f(x')$ (how it borrows information across the input space).
+
+This document separates four concepts:
+
+- **Isotropic vs anisotropic (ARD)**: about differences *across input dimensions*.
+- **Stationary vs nonstationary**: about whether the correlation rule changes *with location* in the input space.
+
+## Isotropic vs anisotropic (ARD)
+
+Assume $x$ is $p$-dimensional (dose, interval, etc.). Consider the squared-exponential (RBF) kernel.
+
+### Isotropic
+
+One lengthscale $\ell$ shared across all dimensions:
+
+$$
+k(x,x') = \sigma^2 \exp\left(-\frac{\|x-x'\|^2}{2\ell^2}\right).
+$$
+
+Interpretation after transforming/standardizing inputs:
+
+- “One unit” change in dose is treated like “one unit” change in interval.
+- Smoothness is the same in every direction.
+
+This is often too restrictive if different inputs operate on different scales.
+
+### Anisotropic (ARD)
+
+One lengthscale per dimension $\ell_1,\dots,\ell_p$:
+
+$$
+k(x,x') = \sigma^2 \exp\left(-\frac12 \sum_{j=1}^p \frac{(x_j-x'_j)^2}{\ell_j^2}\right).
+$$
+
+Interpretation:
+
+- Each input dimension has its own smoothness scale.
+- Small $\ell_j$ means $f$ can change quickly with $x_j$.
+- Large $\ell_j$ means $f$ changes slowly with $x_j$.
+
+Key point:
+
+- Isotropic vs anisotropic concerns variation **across dimensions**, not whether the kernel is stationary.
+
+## Stationary vs nonstationary
+
+### Stationary kernels
+
+A kernel is **stationary** if it depends only on the displacement $h=x-x'$:
+
+$$
+k(x,x') = \kappa(x-x').
+$$
+
+Interpretation:
+
+- The correlation rule is translation-invariant.
+- A step of a given size has the same meaning everywhere in the input space.
+
+A crisp way to phrase this uses the increment for a fixed step $\Delta$:
+
+$$
+D(x;\Delta) = f(x+\Delta) - f(x).
+$$
+
+For stationary kernels, the distribution of $D(x;\Delta)$ depends on $\Delta$ but not on $x$:
+
+$$
+\mathrm{Var}\big(D(x;\Delta)\big) \text{ does not depend on } x.
+$$
+
+This is a statement about the **kernel rule**, not a statement about whether $f(x)$ is increasing, decreasing, or bell-shaped.
+
+### Nonstationary kernels
+
+A kernel is **nonstationary** if the covariance rule depends on location:
+
+$$
+k(x,x') \text{ depends on } x \text{ and } x' \text{ separately.}
+$$
+
+Equivalently, for a fixed step $\Delta$:
+
+$$
+\mathrm{Var}\big(D(x;\Delta)\big) \text{ can depend on } x.
+$$
+
+Interpretation:
+
+- The model can treat the same input step $\Delta$ as “small” in one region and “large” in another (in terms of correlation).
+- Borrowing strength can vary by location.
+
+Common ways to build nonstationarity:
+
+- **Input warping**: define $u=w(x)$ and use a stationary kernel in $u$.
+- **Change-point / mixture kernels**: different regimes in different regions.
+- **Location-dependent lengthscale**: $\ell=\ell(x)$.
+
+## Vaccine-regimen interpretation
+
+Let $x$ encode a regimen, e.g.
+
+$$
+x = (\log(\text{dose}), \log(\text{interval}), \text{platform}, \text{adjuvant}, \ldots).
+$$
+
+- **Isotropic vs anisotropic**: do dose and interval share one smoothness scale, or should each have its own $\ell_j$?
+- **Stationary vs nonstationary**: does “one notch” in dose mean the same similarity at low dose and high dose (after transforms), or does that similarity rule change by region?
+
+Important reminder:
+
+- A bell-shaped or plateau mean curve can still be compatible with a stationary kernel.
+- Nonstationarity is motivated when the *local scale* of change differs strongly by region (e.g., long flat plateaus plus very sharp local features, thresholds, or windows).
+
+## Plots for illustration
+
+The following code generates three types of plots:
+
+1. **Similarity for the same step $\Delta$**: $\mathrm{Corr}(f(x), f(x+\Delta))$ as a function of $x$.
+2. **Kernel matrix heatmaps**: geometry of $K$ for stationary vs nonstationary.
+3. **A simple local-change diagnostic** using $|f(x+\Delta)-f(x)|$ for two example mean curves.
+
+```{r}
+#| eval: true
+
+
+set.seed(2026)
+
+# ----------------------------
+# 1) Kernels (safe in base R)
+# ----------------------------
+rbf_kernel_1d <- function(x, x2, sigma2 = 1, ell = 0.18) {
+  d2 <- outer(x, x2, "-")^2
+  sigma2 * exp(-0.5 * d2 / (ell^2))
+}
+
+warp_fn <- function(x) x^2
+
+rbf_kernel_warped <- function(x, x2, sigma2 = 1, ell = 0.18) {
+  rbf_kernel_1d(warp_fn(x), warp_fn(x2), sigma2 = sigma2, ell = ell)
+}
+
+# ----------------------------
+# Plot A: Corr(f(x), f(x+Δ)) for fixed Δ
+# ----------------------------
+x_grid <- seq(0, 1, length.out = 400)
+delta_val <- 0.08
+
+x_ok <- x_grid[x_grid + delta_val <= 1]
+x2_ok <- x_ok + delta_val
+
+sigma2_val <- 1
+ell_val <- 0.18
+
+# Pairwise correlation for corresponding pairs (x_ok[i], x2_ok[i])
+corr_stationary <- exp(-0.5 * (delta_val^2) / (ell_val^2)) * rep(1, length(x_ok))
+corr_nonstationary <- exp(-0.5 * ((warp_fn(x2_ok) - warp_fn(x_ok))^2) / (ell_val^2))
+
+plot(
+  x_ok, corr_stationary, type = "l", lwd = 2,
+  xlab = "x (e.g., scaled dose)", ylab = "Corr(f(x), f(x+Δ))",
+  main = "Similarity for the SAME step Δ across x"
+)
+lines(x_ok, corr_nonstationary, lwd = 2)
+legend(
+  "topright",
+  legend = c("Stationary RBF", "Nonstationary (warped input)"),
+  lwd = 2, bty = "n"
+)
+
+# ----------------------------
+# Plot B: Kernel matrix heatmaps (geometry)
+# ----------------------------
+x_small <- seq(0, 1, length.out = 60)
+K_stat <- rbf_kernel_1d(x_small, x_small, sigma2 = 1, ell = ell_val)
+K_non  <- rbf_kernel_warped(x_small, x_small, sigma2 = 1, ell = ell_val)
+
+par(mfrow = c(1, 2))
+image(
+  K_stat, main = "Stationary RBF kernel matrix K",
+  xlab = "index of x", ylab = "index of x'", col = gray.colors(100)
+)
+image(
+  K_non, main = "Nonstationary (warp) kernel matrix K",
+  xlab = "index of x", ylab = "index of x'", col = gray.colors(100)
+)
+par(mfrow = c(1, 1))
+
+# ----------------------------
+# Plot C: Mean curves + local-change |f(x+Δ)-f(x)|
+# ----------------------------
+mean_stationary_ok <- function(x) {
+  0.35 * 0.9 * sin(2 * pi * (x - 0.08)) +
+    0.15 * 0.2 * cos(2 * pi * x) +
+    0.15 * (x - 0.5)
+}
+
+mean_nonstationary_ok <- function(x) {
+  1.1 * (1 - exp(-18 * x)) +
+    0.55 * exp(-0.5 * ((x - 0.82) / 0.035)^2) -
+    0.25 * x
+}
+
+x_dense <- seq(0, 1, length.out = 600)
+delta_fd <- 0.05
+mask_fd <- x_dense + delta_fd <= 1
+
+f1 <- mean_stationary_ok(x_dense)
+f2 <- mean_nonstationary_ok(x_dense)
+
+f1_x     <- approx(x_dense, f1, xout = x_dense[mask_fd])$y
+f1_xplus <- approx(x_dense, f1, xout = x_dense[mask_fd] + delta_fd)$y
+df1 <- abs(f1_xplus - f1_x)
+
+f2_x     <- approx(x_dense, f2, xout = x_dense[mask_fd])$y
+f2_xplus <- approx(x_dense, f2, xout = x_dense[mask_fd] + delta_fd)$y
+df2 <- abs(f2_xplus - f2_x)
+
+par(mfrow = c(2, 2))
+
+plot(x_dense, f1, type = "l", lwd = 2,
+     xlab = "x", ylab = "f(x)",
+     main = "Mean f(x): stationary often adequate")
+plot(x_dense, f2, type = "l", lwd = 2,
+     xlab = "x", ylab = "f(x)",
+     main = "Mean f(x): nonstationary often plausible")
+
+plot(x_dense[mask_fd], df1, type = "l", lwd = 2,
+     xlab = "x", ylab = "|f(x+Δ)-f(x)|",
+     main = paste0("Local change with Δ=", delta_fd, " (uniform-ish)"))
+plot(x_dense[mask_fd], df2, type = "l", lwd = 2,
+     xlab = "x", ylab = "|f(x+Δ)-f(x)|",
+     main = paste0("Local change with Δ=", delta_fd, " (regime shifts)"))
+
+par(mfrow = c(1, 1))
+```
+
+## How to interpret the plots
+
+### Similarity-for-fixed-$\Delta$ plot
+
+- **Stationary**: $\mathrm{Corr}(f(x), f(x+\Delta))$ is constant in $x$ for a fixed $\Delta$.
+- **Nonstationary**: this correlation varies with $x$, meaning the same step $\Delta$ is treated differently across regions.
+
+### Kernel-matrix heatmaps
+
+- **Stationary**: the bright band around the diagonal has approximately uniform thickness.
+- **Nonstationary**: the band thickness can vary by region, reflecting location-dependent correlation rules.
+
+### Local-change diagnostic using $|f(x+\Delta)-f(x)|$
+
+This is not a proof of (non)stationarity, but it helps build intuition:
+
+- both curves can have increasing/decreasing segments,
+- what motivates nonstationarity is the coexistence of very different local scales (long flat plateaus plus sharp local features).
+
+## Practical summary for vaccine MOBO
+
+- Use **anisotropic (ARD)** kernels by default when inputs have different natural scales (dose vs interval).
+- Consider **stationary** kernels first after sensible transforms (log-dose, log-titre).
+- Consider **nonstationary** models if you have mechanistic regimes (thresholds, windows) or if a single global lengthscale cannot capture both very sharp and very flat behavior.
+
+## One-sentence takeaways
+
+- **Isotropic vs anisotropic**: one lengthscale $\ell$ vs dimension-specific $\ell_j$.
+- **Stationary vs nonstationary**: similarity depends only on $x-x'$ vs also on where $x$ is located.
+- Do not confuse the *shape* of $f(x)$ with kernel stationarity; stationarity is about the covariance rule, not monotonicity or bell-shapes.
+
+# Interpreting Hausdorff Distance, IGD, and Hypervolume Regret in Finite-Regimen MOBO
+
+## Context and notation
+
+We consider a finite set of vaccine regimens (inputs) and two objectives (outcomes). In simulations, the algorithm returns an estimated Pareto set and we compare it to a reference (“true”) Pareto set.
+
+- Input (regimen) space: 3 dimensions (dose1, dose2, interval).
+- Objective space: 2 ELISA outcomes (same measurement scale).
+
+Let
+
+- $\hat{\mathcal X}$ be the estimated Pareto set in input space (regimens).
+- $\mathcal X^\star$ be the reference Pareto set in input space.
+- $\hat{\mathcal P}$ be the estimated Pareto set in objective space (outcomes).
+- $\mathcal P^\star$ be the reference Pareto set in objective space.
+
+For “truth,” there are two common choices:
+
+- On-grid truth: define $\mathcal X^\star$ (and $\mathcal P^\star$) using the same discrete regimen grid the algorithm can choose from.
+- Fine-grid (continuous proxy) truth: define $\mathcal X^\star$ (and $\mathcal P^\star$) using a much denser grid (or Monte Carlo sample) and the noise-free simulator mean $\mu(x)=\mathbb E[Y\mid x]$.
+
+Both are valid; they answer different questions (menu correctness vs closeness to a continuous optimum).
+
+## Metric 1: Hausdorff distance in input space
+
+### Definition
+
+With Euclidean norm, the (symmetric) Hausdorff distance is
+
+$$
+d_H(\hat{\mathcal X}, \mathcal X^\star)
+=
+\max\Big\{
+\sup_{x^\star\in \mathcal X^\star}\inf_{x\in\hat{\mathcal X}}\lVert x^\star-x\rVert_2,\;
+\sup_{x\in \hat{\mathcal X}}\inf_{x^\star\in\mathcal X^\star}\lVert x-x^\star\rVert_2
+\Big\}.
+$$
+
+### Interpretation (plain language)
+
+$d_H$ is the **worst-case nearest-neighbor mismatch** between the two sets in input space.
+
+- Small $d_H$ means every point in one set has a close counterpart in the other set.
+- Large $d_H$ means there exists at least one point whose closest match is far away.
+
+### How to report $d_H$ in grid-step units (overall)
+
+If you compute $d_H$ using **normalized inputs** (each coordinate mapped to $[0,1]$), then $d_H$ is in “normalized distance units.” To communicate “how many grid steps off (overall),” convert it to a step-based scale.
+
+In our setting, the normalized step sizes are:
+
+- dose coordinates: step $0.25$ (because range is $1.0$ and increment is $0.25$),
+- interval coordinate: step $\Delta_I = 4/14 \approx 0.2857$ (because range is $14$ days and increment is $4$ days).
+
+Define the typical one-step length as the RMS step
+
+$$
+s_{\text{rms}}
+=
+\sqrt{\frac{0.25^2 + 0.25^2 + (4/14)^2}{3}}
+\approx 0.262.
+$$
+
+Then report
+
+$$
+\frac{d_H}{s_{\text{rms}}}
+$$
+
+as an **overall “grid-steps off”** summary (worst-case, in 3D).
+
+**Example:** If $d_H=0.10$, then $d_H/s_{\text{rms}} \approx 0.10/0.262 \approx 0.38$, i.e., the worst-case mismatch is about **0.4 grid steps overall**.
+
+### How to report per-coordinate bounds (upper bounds)
+
+Because the Euclidean distance bounds each coordinate difference, a normalized Hausdorff distance $d_H$ implies an **upper bound** on the worst-case mismatch in each coordinate:
+
+- in each dose coordinate: at most $d_H/0.25$ grid steps,
+- in the interval coordinate: at most $d_H/0.2857$ grid steps (often approximated as $d_H/0.28$).
+
+These are conservative statements (upper bounds), not claims that each coordinate actually attains that mismatch.
+
+**Example:** If $d_H=0.30$ (normalized),
+
+- dose upper bound: $0.30/0.25 = 1.2$ dose-steps,
+- interval upper bound: $0.30/0.2857 \approx 1.05$ interval-steps.
+
+A clean sentence is:
+
+> “With normalized Euclidean Hausdorff distance $d_H=0.30$, the worst-case mismatch is at most $0.30/0.25=1.2$ grid steps in each dose coordinate and at most $0.30/0.2857\approx 1.05$ grid steps in the interval coordinate.”
+
+## Metric 2: IGD in objective space
+
+### Definition
+
+The inverted generational distance (IGD) is
+
+$$
+d_{\text{IGD}}(\hat{\mathcal P}, \mathcal P^\star)
+=
+\frac{1}{|\mathcal P^\star|}
+\sum_{y^\star\in\mathcal P^\star}
+\min_{\hat y\in\hat{\mathcal P}}
+\lVert y^\star-\hat y\rVert_2.
+$$
+
+### Interpretation (plain language)
+
+IGD measures how well the **estimated front covers the true front** in objective space:
+
+- For each point on the true Pareto front $\mathcal P^\star$, find the closest point on the estimated front $\hat{\mathcal P}$.
+- IGD is the **average** of those closest distances.
+
+Smaller IGD means better coverage of the true front.
+
+Because both objectives are ELISA outcomes on the same scale, IGD is directly interpretable in those units.
+
+**Example:** If $d_{\text{IGD}}=0.01$, then
+
+> “On average, each true Pareto point is within Euclidean distance 0.01 (in ELISA units) of the estimated front.”
+
+Note: IGD (as defined above) does not directly penalize “extra” estimated points that lie far from the true front, because it averages over $\mathcal P^\star$, not over $\hat{\mathcal P}$.
+
+## Metric 3: Hypervolume regret
+
+### Definition
+
+Fix a reference point $r$ in objective space representing a clinically “bad” outcome vector (for minimization). Let $\mathrm{HV}(S; r)$ denote the hypervolume dominated by the set $S$ and bounded by $r$. In 2D, this is an area.
+
+Define hypervolume regret as
+
+$$
+R_{\mathrm{HV}}
+=
+\mathrm{HV}(\mathcal P^\star; r)
+-
+\mathrm{HV}(\hat{\mathcal P}; r)
+\ge 0.
+$$
+
+A relative version is
+
+$$
+R_{\mathrm{HV}}^{\mathrm{rel}}
+=
+\frac{\mathrm{HV}(\mathcal P^\star; r)-\mathrm{HV}(\hat{\mathcal P}; r)}{\mathrm{HV}(\mathcal P^\star; r)}.
+$$
+
+### Interpretation (plain language)
+
+Hypervolume regret measures how much “Pareto quality” is lost:
+
+- $\mathrm{HV}(\mathcal P^\star; r)$ is the best achievable dominated area (given the truth definition).
+- $\mathrm{HV}(\hat{\mathcal P}; r)$ is what the algorithm achieved.
+- The regret is the **gap**. Smaller is better.
+
+You must always report the reference point $r$, because the value depends on it.
+
+## Recommended reporting (minimal and clear)
+
+A practical reporting package (especially when distributions are skewed) is:
+
+- Hausdorff in input space (normalized):
+  - report $d_H/s_{\text{rms}}$ as the overall grid-step interpretation,
+  - report $d_H/0.25$ (doses) and $d_H/0.2857$ (interval) as per-coordinate upper bounds in grid steps.
+- IGD in objective space (true scale, ELISA):
+  - report median and 95th percentile across simulations (or mean and SD if symmetric).
+- Hypervolume regret:
+  - report $R_{\mathrm{HV}}$ (or $R_{\mathrm{HV}}^{\mathrm{rel}}$) and explicitly state the reference point $r$,
+  - summarize across simulations using median and high quantiles (e.g., 90th/95th percentile).
+
+This combination gives:
+
+- input-space accuracy of selected regimens (Hausdorff, worst-case),
+- objective-space coverage of the true front (IGD, average-case),
+- overall Pareto quality loss (HV regret, decision-relevant, reference-point-dependent).
+
+
+
+
+
+
