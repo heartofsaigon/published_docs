@@ -9,3 +9,4 @@
 7. [Explaining Model 1 from Harari et al. (2024): A Bayesian Multi-Arm Vaccine Trial Model](https://heartofsaigon.github.io/published_docs/07/07.html)
 8.
 9. [Isotropic vs. anisotropic AND  Hausdorff Distance vs. Inverted generational distance (IGD)](https://heartofsaigon.github.io/published_docs/09.html)
+10. [Bayesian Causal Inference via G-Computation: Intuition, Predictive Distributions, and Examples](https://heartofsaigon.github.io/published_docs/10.html)

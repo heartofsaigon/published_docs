@@ -1,0 +1,515 @@
+---
+title: "Bayesian Causal Inference via G-Computation: Intuition, Predictive Distributions, and Examples"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: true
+  eval: true
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+## Overview
+
+These notes explain Bayesian causal inference using **g-computation**. The goal is to clarify the relationship between:
+
+- causal identification via the **g-formula**
+- Bayesian inference via the **posterior distribution**
+- prediction via the **posterior predictive distribution**
+
+We focus on the practical workflow for analyzing observational data with a binary treatment.
+
+The key idea is simple:
+
+> Fit a Bayesian outcome model, simulate hypothetical outcomes under different treatments, and average over the target population.
+
+This procedure is known as **Bayesian g-computation**.
+
+## The causal question
+
+Suppose we observe data
+
+$$
+(Y_i, T_i, X_i), \quad i = 1,\dots,n
+$$
+
+where
+
+- $Y$ is the outcome
+- $T \in \{0,1\}$ is the treatment
+- $X$ represents baseline covariates
+
+The causal question is:
+
+> What would be the average outcome if everyone received treatment 1?  
+> What would be the average outcome if everyone received treatment 0?
+
+These quantities are
+
+$$
+E(Y \mid do(T=1))
+$$
+
+and
+
+$$
+E(Y \mid do(T=0)).
+$$
+
+The **average treatment effect** is
+
+$$
+ATE = E(Y \mid do(T=1)) - E(Y \mid do(T=0)).
+$$
+
+## Identification via the g-formula
+
+If treatment assignment is ignorable given $X$, meaning that after conditioning on $X$, the observed treatment assignment carries no additional information about the outcome beyond the treatment received, then the intervention mean is
+
+$$
+E(Y \mid do(T=t))
+=
+\int E(Y \mid T=t, X=x)\, f_X(x)\, dx.
+$$
+
+This is the **g-formula**.
+
+Interpretation:
+
+1. compute the mean outcome for each covariate value $x$
+2. set treatment equal to $t$
+3. average those conditional means over the target population distribution of $X$
+
+If $X$ is discrete, the integral becomes a sum:
+
+$$
+E(Y \mid do(T=t))
+=
+\sum_x E(Y \mid T=t, X=x)P(X=x).
+$$
+
+If $X$ is continuous, we use the density $f_X(x)$ or, in practice, the empirical distribution of the observed $X_i$ values.
+
+## Why the g-formula matters
+
+A naive comparison
+
+$$
+E(Y \mid T=1) - E(Y \mid T=0)
+$$
+
+compares two observed groups that may have different covariate distributions.
+
+The g-formula fixes this by asking:
+
+> What would happen if the **same target population** received treatment 1?  
+> What would happen if that **same target population** received treatment 0?
+
+That is why the g-formula is the formal causal ingredient behind the intuitive duplicated-dataset algorithm.
+
+## The Bayesian outcome model
+
+To estimate the conditional outcome law, we specify a Bayesian model such as
+
+$$
+Y_i \mid T_i, X_i, \theta \sim p(y \mid T_i, X_i, \theta)
+$$
+
+with prior
+
+$$
+\theta \sim p(\theta).
+$$
+
+After observing data $D$, we obtain the posterior distribution
+
+$$
+p(\theta \mid D).
+$$
+
+This posterior quantifies uncertainty about the unknown parameters.
+
+## Posterior distribution versus posterior predictive distribution
+
+### Posterior distribution
+
+The posterior distribution is
+
+$$
+p(\theta \mid D).
+$$
+
+It describes uncertainty about unknown model parameters after seeing the data.
+
+Examples of parameters include:
+
+- regression coefficients
+- variances
+- subgroup means
+- interaction terms
+
+### Posterior predictive distribution
+
+The posterior predictive distribution for a future outcome is
+
+$$
+p(y^{new} \mid T=t, X=x, D)
+=
+\int p(y^{new} \mid T=t, X=x, \theta)p(\theta \mid D)d\theta.
+$$
+
+This integrates over posterior uncertainty in $\theta$.
+
+So:
+
+- the **posterior distribution** is about unknown parameters
+- the **posterior predictive distribution** is about future outcomes
+
+## How posterior prediction and the g-formula work together
+
+The intervention mean can be written as
+
+$$
+E(Y \mid do(T=t), D)
+=
+\int E(Y \mid T=t, X=x, D)\, f_X(x)\, dx.
+$$
+
+Thus:
+
+1. the Bayesian model provides conditional predictions
+2. the g-formula tells us how to average those predictions across the target population
+
+The g-formula is therefore **not separate** from the predictive approach. The predictive approach is one practical way to implement the g-formula.
+
+## Intuition: simulate two hypothetical worlds
+
+The algorithm is easy to picture.
+
+### World 1: everyone treated
+
+- keep each subject’s observed covariates $X_i$
+- set $T_i = 1$ for all subjects
+- predict or simulate outcomes
+
+### World 0: everyone untreated
+
+- keep the same $X_i$
+- set $T_i = 0$ for all subjects
+- predict or simulate outcomes
+
+Then average the outcomes in each world.
+
+The difference between these two averages is the causal effect.
+
+This is exactly **Bayesian g-computation**.
+
+## Illustrative example with discrete subgroup
+
+Suppose $X$ is a binary subgroup indicator and the target population satisfies
+
+$$
+P(X=0)=0.7, \qquad P(X=1)=0.3.
+$$
+
+Suppose the fitted model gives
+
+$$
+E(Y \mid T=1,X=0)=5,
+$$
+
+$$
+E(Y \mid T=1,X=1)=8,
+$$
+
+$$
+E(Y \mid T=0,X=0)=7,
+$$
+
+$$
+E(Y \mid T=0,X=1)=10.
+$$
+
+Then
+
+$$
+E(Y \mid do(T=1))
+=
+0.7(5) + 0.3(8) = 5.9
+$$
+
+and
+
+$$
+E(Y \mid do(T=0))
+=
+0.7(7) + 0.3(10) = 7.9.
+$$
+
+The treatment effect is
+
+$$
+5.9 - 7.9 = -2.
+$$
+
+This example shows the subgroup-weighted form of the g-formula.
+
+## Continuous covariate example
+
+Now suppose $X$ is continuous. For example, let $X$ be age and use the outcome model
+
+$$
+E(Y \mid T,X)
+=
+\beta_0 + \beta_1T + \beta_2X + \beta_3TX.
+$$
+
+Then for subject $i$,
+
+$$
+E(Y \mid T=1,X_i)
+=
+\beta_0 + \beta_1 + \beta_2X_i + \beta_3X_i,
+$$
+
+and
+
+$$
+E(Y \mid T=0,X_i)
+=
+\beta_0 + \beta_2X_i.
+$$
+
+The intervention means are approximated by
+
+$$
+\psi_1 =
+\frac{1}{n}
+\sum_{i=1}^n
+E(Y \mid T=1,X_i)
+$$
+
+and
+
+$$
+\psi_0 =
+\frac{1}{n}
+\sum_{i=1}^n
+E(Y \mid T=0,X_i).
+$$
+
+This is just the empirical version of integrating over the continuous covariate distribution.
+
+## Example dataset in R
+
+```{r}
+set.seed(123)
+
+dat <- data.frame(
+  id = 1:6,
+  X  = c(20, 35, 50, 40, 60, 30),
+  T  = c(1, 0, 1, 0, 1, 0),
+  Y  = c(5.1, 7.4, 6.2, 8.0, 7.1, 6.8)
+)
+
+dat
+```
+
+## Simulated posterior draws
+
+For illustration, we generate artificial posterior draws for a simple linear outcome model
+
+$$
+E(Y \mid T,X) = \beta_0 + \beta_1T + \beta_2X.
+$$
+
+```{r}
+M <- 2000
+
+beta0 <- rnorm(M, 6, 0.4)
+beta1 <- rnorm(M, -1.2, 0.3)
+beta2 <- rnorm(M, 0.03, 0.01)
+
+n <- nrow(dat)
+```
+
+## Bayesian g-computation using conditional means
+
+For each posterior draw, we create two hypothetical worlds:
+
+- all subjects assigned $T=1$
+- all subjects assigned $T=0$
+
+and keep each subject’s observed covariate value $X_i$.
+
+```{r}
+psi1 <- numeric(M)
+psi0 <- numeric(M)
+
+for (m in 1:M) {
+
+  mu1 <- beta0[m] + beta1[m] * 1 + beta2[m] * dat$X
+  mu0 <- beta0[m] + beta1[m] * 0 + beta2[m] * dat$X
+
+  psi1[m] <- mean(mu1)
+  psi0[m] <- mean(mu0)
+}
+
+delta <- psi1 - psi0
+```
+
+## Posterior summary of the causal effect
+
+```{r}
+c(
+  mean_treated = mean(psi1),
+  mean_control = mean(psi0),
+  mean_effect  = mean(delta),
+  lower        = quantile(delta, 0.025),
+  upper        = quantile(delta, 0.975)
+)
+```
+
+## Posterior predictive simulation version
+
+Instead of using conditional means directly, we can simulate outcomes from the posterior predictive distribution.
+
+```{r}
+sigma <- abs(rnorm(M, 0.8, 0.1))
+
+psi1_sim <- numeric(M)
+psi0_sim <- numeric(M)
+
+for (m in 1:M) {
+
+  mu1 <- beta0[m] + beta1[m] * 1 + beta2[m] * dat$X
+  mu0 <- beta0[m] + beta1[m] * 0 + beta2[m] * dat$X
+
+  y1 <- rnorm(n, mu1, sigma[m])
+  y0 <- rnorm(n, mu0, sigma[m])
+
+  psi1_sim[m] <- mean(y1)
+  psi0_sim[m] <- mean(y0)
+}
+
+delta_sim <- psi1_sim - psi0_sim
+```
+
+## Posterior predictive summary
+
+```{r}
+c(
+  mean_effect = mean(delta_sim),
+  lower       = quantile(delta_sim, 0.025),
+  upper       = quantile(delta_sim, 0.975)
+)
+```
+
+## What each step means
+
+The code above has three layers.
+
+### Causal identification layer
+
+The g-formula says
+
+$$
+E(Y \mid do(T=t))
+=
+\int E(Y \mid T=t, X=x)\, f_X(x)\, dx.
+$$
+
+### Bayesian inference layer
+
+The posterior distribution
+
+$$
+p(\theta \mid D)
+$$
+
+quantifies uncertainty about the outcome model parameters.
+
+### Predictive layer
+
+For each posterior draw, we construct hypothetical treated and untreated worlds and compute the average outcome in each world.
+
+Thus:
+
+- the **posterior distribution** handles uncertainty about unknown model parameters
+- the **posterior predictive distribution** generates hypothetical outcomes
+- **g-computation** averages those outcomes to produce causal estimates
+
+## Why the duplicated-dataset intuition is correct
+
+Your intuitive algorithm is:
+
+1. keep the observed $X_i$
+2. set treatment to 1 for everyone
+3. simulate or predict outcomes
+4. average them
+5. set treatment to 0 for everyone
+6. simulate or predict outcomes again
+7. average them
+8. compare the two averages
+
+This is not merely similar to the g-formula. It **is** the g-formula in computational form.
+
+The formal integral
+
+$$
+\int E(Y \mid T=t, X=x)\, f_X(x)\, dx
+$$
+
+is being approximated by the empirical average
+
+$$
+\frac{1}{n}\sum_{i=1}^n E(Y \mid T=t, X_i).
+$$
+
+So your intuitive predictive simulation story and the formal g-formula are the same method viewed from two angles.
+
+## Extension to ETT
+
+If the target is the effect of treatment on the treated, then we average over the covariate distribution of treated subjects only:
+
+$$
+ETT
+=
+\int
+\left\{
+E(Y \mid T=1, X=x) - E(Y \mid T=0, X=x)
+\right\}
+f_{X \mid T=1}(x)\, dx.
+$$
+
+In practice, that means repeating the same g-computation procedure but averaging over the treated subjects’ observed covariate values rather than over all subjects.
+
+## Key take-home messages
+
+- The **g-formula** is the causal averaging rule.
+- The **posterior distribution** describes uncertainty about unknown model parameters.
+- The **posterior predictive distribution** describes possible future outcomes under a treatment and covariate profile.
+- Duplicating the dataset, fixing treatment, predicting outcomes, and averaging is exactly **Bayesian g-computation**.
+- For continuous $X$, we do not use probabilities like $P(X=0)$ or $P(X=1)$; instead, we average over the empirical distribution of the observed covariates.
+
+## Final summary
+
+Bayesian causal inference via g-computation is conceptually simple. We fit a Bayesian outcome model to observational data, then construct hypothetical worlds in which every subject receives treatment 1 and, separately, treatment 0, while preserving each subject’s observed covariates. We predict or simulate outcomes in those two worlds, average outcomes across the target population, and compare the resulting intervention means. The g-formula provides the formal justification for this averaging step, while the posterior and posterior predictive distributions provide the Bayesian machinery for estimation and uncertainty propagation.
+
+
+
+
