@@ -10,3 +10,6 @@
 8.
 9. [Isotropic vs. anisotropic AND  Hausdorff Distance vs. Inverted generational distance (IGD)](https://heartofsaigon.github.io/published_docs/09.html)
 10. [Bayesian Causal Inference via G-Computation: Intuition, Predictive Distributions, and Examples](https://heartofsaigon.github.io/published_docs/10.html)
+11.
+12.
+13.[Structural Equation Modeling (SEM): Concepts, Illustrative Examples, and a Bayesian Stan Model](https://heartofsaigon.github.io/published_docs/13.html)
