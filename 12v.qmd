@@ -1,0 +1,1341 @@
+---
+title: "Xây dựng Kernel cho Gaussian Process dựa trên cấu trúc Vaccine Regimen"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+
+## Giới thiệu
+
+Trong Gaussian process (GP), kernel đóng vai trò quyết định cách mô hình hiểu hai điểm thiết kế “giống nhau” hay “khác nhau” đến mức nào. Nếu hai điểm được xem là rất giống nhau, mô hình sẽ cho covariance lớn và do đó sẽ borrow strength mạnh giữa chúng. Nếu hai điểm rất khác nhau, covariance nhỏ và sự suy luận sẽ ít lan truyền từ điểm này sang điểm kia.
+
+Trong các bài toán vaccine regimen, đặc biệt là các regimen có nhiều mũi tiêm và nhiều khoảng thời gian giữa các mũi, việc dùng trực tiếp một kernel chuẩn như squared exponential trên một vector đầu vào thô thường là chưa đủ. Lý do là vì đầu vào không chỉ là một vector số, mà là một đối tượng có cấu trúc sinh học và thời gian rất rõ:
+
+- có bao nhiêu mũi đã tiêm
+- liều của từng mũi là bao nhiêu
+- khoảng cách giữa các mũi là bao lâu
+- thời điểm hiện tại cách mũi gần nhất bao lâu
+- lịch sử tiêm chủng trước đó đã tạo ra trạng thái miễn dịch như thế nào
+
+Do đó, một hướng rất tự nhiên là:
+
+> dùng các mô hình động học vaccine như một nguồn ý tưởng để thiết kế kernel.
+
+Tài liệu này giải thích chi tiết cách xây kernel dựa trên ba mô hình đã bàn trước đó:
+
+- Mô hình 1: mixed model với các covariates biến thiên theo thời gian
+- Mô hình 2: jump-decay vaccine model
+- Mô hình 3: latent state-space immune model
+
+Điểm quan trọng là cả ba ý tưởng đều có giá trị như nhau. Chúng không phải là ba bước tăng dần mà chỉ giữ lại mô hình 3. Trái lại, mỗi mô hình tạo ra một cách nhìn khác nhau về similarity giữa hai regimens. Vì vậy, cả ba đều đáng được trình bày đầy đủ với:
+
+- rationale
+- cách định nghĩa feature map
+- cách xây kernel
+- giải thích ý nghĩa thống kê
+- ưu điểm
+- hạn chế
+- ví dụ cụ thể
+
+Mục tiêu của tài liệu này là giúp bạn nhìn rõ:
+
+- từ một mô hình động học, ta rút ra được feature map như thế nào
+- từ feature map đó, ta xây kernel ra sao
+- kernel đó đang ngụ ý điều gì về mặt sinh học và thống kê
+
+## Bối cảnh dữ liệu trong vaccine trial nhiều mũi tiêm
+
+Xét một subject tại một thời điểm đánh giá. Thay vì biểu diễn regimen chỉ bằng một nhãn, ta biểu diễn nó bằng toàn bộ lịch sử can thiệp đã xảy ra trước thời điểm đánh giá.
+
+Ta định nghĩa một đối tượng đầu vào tổng quát là
+
+$$
+x = (N,\ \mathbf d,\ \boldsymbol\tau,\ s)
+$$
+
+trong đó:
+
+- $N$: số mũi đã nhận tính đến thời điểm đánh giá
+- $\mathbf d = (d_1,\dots,d_N)$: vector liều của các mũi đã nhận
+- $\boldsymbol\tau = (\tau_1,\dots,\tau_{N-1})$: vector khoảng cách giữa các mũi liên tiếp
+- $s$: thời gian từ mũi gần nhất đến thời điểm outcome được đánh giá
+
+Cần nhấn mạnh rằng:
+
+- $N$ là một số nguyên
+- $d_k$ là liều của mũi thứ $k$
+- $\tau_k$ là khoảng thời gian giữa mũi $k$ và mũi $k+1$
+- $s$ là khoảng thời gian từ mũi thứ $N$ đến thời điểm quan sát outcome
+
+Ví dụ, nếu một subject đã nhận 3 mũi với:
+
+- $d_1 = 1.0$
+- $d_2 = 2.0$
+- $d_3 = 1.5$
+- $\tau_1 = 60$
+- $\tau_2 = 60$
+- $s = 7$
+
+thì đầu vào là
+
+$$
+x = (3,\ (1.0,2.0,1.5),\ (60,60),\ 7).
+$$
+
+Trong phần sau, mỗi mô hình sẽ cung cấp một cách khác nhau để biến đối tượng $x$ này thành một representation hữu ích cho việc xây kernel.
+
+## Từ mô hình outcome sang kernel
+
+Trong GP, ta có thể đặt mô hình
+
+$$
+f(\cdot) \sim GP(0,k(\cdot,\cdot))
+$$
+
+và dùng kernel $k(x,x^{\prime})$ để mã hóa mức độ giống nhau giữa hai đầu vào $x$ và $x^{\prime}$.
+
+Có hai cách tổng quát để thiết kế kernel từ kiến thức chuyên ngành:
+
+### Cách 1: xây feature map rồi đặt kernel chuẩn trên feature map
+
+Ta định nghĩa một ánh xạ
+
+$$
+\phi(x)
+$$
+
+rồi thay vì chạy kernel trên đầu vào gốc $x$, ta chạy kernel trên vector đặc trưng $\phi(x)$:
+
+$$
+k(x,x^{\prime}) = \tau^2 \exp\left(
+-\sum_{r=1}^p \frac{(\phi_r(x)-\phi_r(x^{\prime}))^2}{2\ell_r^2}
+\right).
+$$
+
+Ở đây:
+
+- $\phi(x)$ là vector gồm $p$ thành phần
+- $\phi_r(x)$ là thành phần thứ $r$ của vector đó
+- $\tau^2$ là marginal variance
+- $\ell_r$ là lengthscale của chiều thứ $r$
+
+### Cách 2: xây nhiều feature maps khác nhau rồi ghép các kernels thành phần
+
+Ví dụ:
+
+$$
+k(x,x^{\prime}) = \tau_1^2 k_1(x,x^{\prime}) + \tau_2^2 k_2(x,x^{\prime}) + \tau_3^2 k_3(x,x^{\prime}).
+$$
+
+Trong đó:
+
+- $k_1$ lấy ý tưởng từ mô hình 1
+- $k_2$ lấy ý tưởng từ mô hình 2
+- $k_3$ lấy ý tưởng từ mô hình 3
+
+Đây là một additive structured kernel.
+
+Trong tài liệu này, trước hết ta sẽ phân tích từng kernel riêng lẻ, sau đó mới nói về cách ghép chúng lại.
+
+## Ý tưởng từ Mô hình 1: kernel dựa trên các summary covariates
+
+### Nhắc lại tinh thần của Mô hình 1
+
+Mô hình 1 xem outcome tại thời điểm $t$ phụ thuộc vào các đại lượng tóm tắt như:
+
+- số mũi đã nhận
+- thời gian từ mũi gần nhất
+- dose của mũi gần nhất
+- cumulative dose
+- interaction giữa số mũi và thời gian từ mũi gần nhất
+
+Một dạng điển hình là
+
+$$
+Y(t)
+=
+\beta_0
++
+\beta_1 N(t)
++
+\beta_2 s(t)
++
+\beta_3 d_{N(t)}
++
+\beta_4 N(t)s(t)
++
+\varepsilon.
+$$
+
+Mô hình này nói rằng để mô tả outcome, các summary covariates ở stage hiện tại đã mang phần lớn thông tin.
+
+### Rationale để xây kernel
+
+Nếu outcome phụ thuộc mạnh vào các summary như trên, thì một notion similarity hợp lý là:
+
+> hai regimens giống nhau nếu các summary covariates hiện tại của chúng giống nhau.
+
+Nói cách khác, ta không cần so sánh toàn bộ lịch sử chi tiết trước tiên. Ta có thể bắt đầu bằng cách so sánh:
+
+- đã tiêm cùng số mũi hay chưa
+- thời gian từ mũi gần nhất có giống nhau không
+- dose gần nhất có gần nhau không
+- cumulative dose có tương tự không
+
+### Định nghĩa feature map cho Mô hình 1
+
+Ta định nghĩa
+
+$$
+\phi_{M1}(x)
+=
+\begin{pmatrix}
+N \\
+s \\
+d_N \\
+c \\
+Ns
+\end{pmatrix}
+$$
+
+trong đó
+
+$$
+c = \sum_{k=1}^{N} d_k
+$$
+
+là cumulative dose.
+
+Vậy:
+
+- thành phần thứ nhất là số mũi
+- thành phần thứ hai là thời gian từ mũi gần nhất
+- thành phần thứ ba là dose gần nhất
+- thành phần thứ tư là cumulative dose
+- thành phần thứ năm là interaction giữa stage và time since last dose
+
+### Ví dụ cụ thể về $\phi_{M1}(x)$
+
+Xét regimen/history
+
+$$
+x = (3,\ (1.0,2.0,1.5),\ (60,60),\ 7).
+$$
+
+Ta có:
+
+- $N=3$
+- $s=7$
+- $d_N = d_3 = 1.5$
+- $c = 1.0+2.0+1.5 = 4.5$
+- $Ns = 3\times 7 = 21$
+
+nên
+
+$$
+\phi_{M1}(x)
+=
+\begin{pmatrix}
+3 \\
+7 \\
+1.5 \\
+4.5 \\
+21
+\end{pmatrix}.
+$$
+
+Nếu một regimen khác là
+
+$$
+x^{\prime} = (2,\ (1.0,2.0),\ (60),\ 7),
+$$
+
+thì
+
+- $N=2$
+- $s=7$
+- $d_N=2.0$
+- $c=3.0$
+- $Ns=14$
+
+nên
+
+$$
+\phi_{M1}(x^{\prime})
+=
+\begin{pmatrix}
+2 \\
+7 \\
+2.0 \\
+3.0 \\
+14
+\end{pmatrix}.
+$$
+
+### Kernel cho Mô hình 1
+
+Ta dùng kernel Gaussian với ARD:
+
+$$
+k_{M1}(x,x^{\prime})
+=
+\tau_1^2
+\exp\left(
+-\frac{(N-N^{\prime})^2}{2\ell_{1N}^2}
+-\frac{(s-s^{\prime})^2}{2\ell_{1s}^2}
+-\frac{(d_N-d_N^{\prime})^2}{2\ell_{1d}^2}
+-\frac{(c-c^{\prime})^2}{2\ell_{1c}^2}
+-\frac{(Ns-N^{\prime} s^{\prime})^2}{2\ell_{1I}^2}
+\right).
+$$
+
+### Ý nghĩa
+
+Kernel này nói rằng hai regimens gần nhau nếu chúng giống nhau ở các summary hiện tại.
+
+Nếu:
+
+- cùng stage
+- cùng time since last dose
+- dose gần nhất gần nhau
+- cumulative dose gần nhau
+
+thì covariance cao.
+
+### Ưu điểm
+
+- đơn giản
+- dễ tính
+- dễ giải thích
+- dễ defend
+- phù hợp khi muốn bắt đầu với một kernel có cấu trúc nhưng không quá nặng
+
+### Hạn chế
+
+- mất thông tin về thứ tự lịch sử xa hơn
+- hai regimens có thể có cùng cumulative dose nhưng lịch sử khác nhau
+- similarity bị nén vào vài summaries nên có thể hơi thô
+
+## Ý tưởng từ Mô hình 2: kernel dựa trên jump-decay signatures
+
+### Nhắc lại tinh thần của Mô hình 2
+
+Mô hình 2 nói rằng outcome tại thời điểm hiện tại là tổng các đóng góp còn lại từ từng mũi:
+
+$$
+Y(t)
+=
+\mu
++
+\sum_{k=1}^{N}
+A(d_k)\exp(-\lambda \Delta_k)
++
+\varepsilon,
+$$
+
+trong đó:
+
+- $A(d_k)$ là jump amplitude do mũi thứ $k$
+- $\Delta_k$ là thời gian từ mũi thứ $k$ đến thời điểm đánh giá
+
+Một dạng đơn giản là
+
+$$
+A(d_k)=\theta_0+\theta_1 d_k.
+$$
+
+### Rationale để xây kernel
+
+Nếu outcome được quyết định bởi các đóng góp còn lại của từng mũi, thì một notion similarity hợp lý là:
+
+> hai regimens giống nhau nếu các đóng góp miễn dịch còn lại từ từng mũi của chúng giống nhau.
+
+Đây là một notion similarity vaccine-like hơn Mô hình 1.
+
+### Định nghĩa thời gian $\Delta_k$
+
+Cho regimen/history
+
+$$
+x=(N,\mathbf d,\boldsymbol\tau,s),
+$$
+
+ta định nghĩa thời gian từ mũi thứ $k$ đến thời điểm đánh giá là
+
+$$
+\Delta_k(x) = s + \sum_{j=k}^{N-1}\tau_j,
+\qquad k=1,\dots,N.
+$$
+
+Giải thích:
+
+- nếu $k=N$, thì $\Delta_N(x)=s$
+- nếu $k=N-1$, thì $\Delta_{N-1}(x)=\tau_{N-1}+s$
+- nếu $k=N-2$, thì $\Delta_{N-2}(x)=\tau_{N-2}+\tau_{N-1}+s$
+
+### Định nghĩa feature map cho Mô hình 2
+
+Giả sử số mũi tối đa là 3. Khi đó ta định nghĩa
+
+$$
+\phi_{M2}(x)
+=
+\begin{pmatrix}
+A(d_1)e^{-\lambda \Delta_1(x)} \\
+A(d_2)e^{-\lambda \Delta_2(x)} \\
+A(d_3)e^{-\lambda \Delta_3(x)}
+\end{pmatrix}
+$$
+
+với quy ước:
+
+- nếu chưa có mũi thứ 2 thì thành phần thứ 2 bằng 0
+- nếu chưa có mũi thứ 3 thì thành phần thứ 3 bằng 0
+
+### Ví dụ cụ thể về $\phi_{M2}(x)$
+
+Xét
+
+$$
+x=(3,\ (1.0,2.0,1.5),\ (60,60),\ 7)
+$$
+
+và giả sử
+
+$$
+A(d)=1+0.5d,\qquad \lambda=0.02.
+$$
+
+Khi đó:
+
+$$
+A(d_1)=1.5,\qquad A(d_2)=2.0,\qquad A(d_3)=1.75.
+$$
+
+Các khoảng thời gian là:
+
+$$
+\Delta_3(x)=7
+$$
+
+$$
+\Delta_2(x)=60+7=67
+$$
+
+$$
+\Delta_1(x)=60+60+7=127.
+$$
+
+Do đó
+
+$$
+\phi_{M2}(x)
+=
+\begin{pmatrix}
+1.5e^{-0.02\times 127} \\
+2.0e^{-0.02\times 67} \\
+1.75e^{-0.02\times 7}
+\end{pmatrix}.
+$$
+
+Tính gần đúng:
+
+$$
+e^{-2.54}\approx 0.079,\qquad
+e^{-1.34}\approx 0.262,\qquad
+e^{-0.14}\approx 0.869.
+$$
+
+Nên
+
+$$
+\phi_{M2}(x)
+\approx
+\begin{pmatrix}
+1.5\times 0.079 \\
+2.0\times 0.262 \\
+1.75\times 0.869
+\end{pmatrix}
+=
+\begin{pmatrix}
+0.119 \\
+0.524 \\
+1.521
+\end{pmatrix}.
+$$
+
+### Kernel cho Mô hình 2
+
+Ta đặt
+
+$$
+k_{M2}(x,x^{\prime})
+=
+\tau_2^2
+\exp\left(
+-\sum_{r=1}^{3}
+\frac{\left(\phi_{M2,r}(x)-\phi_{M2,r}(x^{\prime})\right)^2}{2\ell_{2r}^2}
+\right).
+$$
+
+### Ý nghĩa
+
+Hai regimens gần nhau nếu chúng để lại các “dấu vết miễn dịch còn lại” tương tự nhau tại thời điểm đánh giá.
+
+Điều này mã hóa đồng thời:
+
+- dose
+- timing
+- số mũi
+- recency của từng mũi
+
+### Ưu điểm
+
+- sát với logic vaccine
+- giữ được cấu trúc từng mũi
+- dễ giải thích sinh học
+- dùng được cho các treatment histories khác nhau
+
+### Hạn chế
+
+- cần chọn hàm $A(d)$ và decay rate $\lambda$
+- feature map phụ thuộc vào một giả định động học cụ thể
+- nếu động học thực tế khác nhiều, representation có thể bị lệch
+
+## Ý tưởng từ Mô hình 3: kernel dựa trên latent immune state
+
+### Nhắc lại tinh thần của Mô hình 3
+
+Mô hình 3 giả định có một trạng thái miễn dịch ẩn được cập nhật sau mỗi mũi.
+
+Ta viết
+
+$$
+S_1(x)=\psi_1 d_1
+$$
+
+và với $k=2,\dots,N$:
+
+$$
+S_k(x)=\phi S_{k-1}(x)+\psi_1 d_k+\psi_2 \tau_{k-1}.
+$$
+
+Sau đó state tại thời điểm đánh giá là
+
+$$
+S(x)=S_N(x)e^{-\lambda s}.
+$$
+
+### Rationale để xây kernel
+
+Nếu outcome thực sự được quyết định bởi một latent immune state, thì một notion similarity hợp lý là:
+
+> hai regimens giống nhau nếu chúng tạo ra latent immune state tương tự nhau.
+
+Đây là cách nén toàn bộ lịch sử tiêm chủng thành một summary có ý nghĩa cơ chế hơn.
+
+### Notation sạch và rõ
+
+Với một regimen/history
+
+$$
+x=(N,\mathbf d,\boldsymbol\tau,s),
+$$
+
+ta định nghĩa:
+
+- $N(x)$ là số mũi
+- $s(x)$ là thời gian từ mũi gần nhất
+- $S_k(x)$ là latent state ngay sau mũi thứ $k$
+- $S_N(x)$ là latent state ngay sau mũi cuối đã nhận
+- $S(x)$ là latent state tại thời điểm đánh giá
+
+Cụ thể:
+
+#### State sau mũi 1
+
+$$
+S_1(x)=\psi_1 d_1
+$$
+
+#### State sau mũi $k\ge 2$
+
+$$
+S_k(x)=\phi S_{k-1}(x)+\psi_1 d_k+\psi_2 \tau_{k-1}
+$$
+
+#### State tại thời điểm đánh giá
+
+$$
+S(x)=S_N(x)e^{-\lambda s(x)}.
+$$
+
+### Ví dụ cụ thể về $\phi_{M3}(x)$
+
+Xét
+
+$$
+x=(3,\ (1.0,2.0,1.5),\ (60,60),\ 7)
+$$
+
+và chọn tham số
+
+$$
+\phi=0.5,\qquad
+\psi_1=1.2,\qquad
+\psi_2=0.01,\qquad
+\lambda=0.02.
+$$
+
+Ta tính:
+
+#### Bước 1
+
+$$
+S_1(x)=1.2\times 1.0=1.2
+$$
+
+#### Bước 2
+
+$$
+S_2(x)=0.5\times 1.2 + 1.2\times 2.0 + 0.01\times 60
+$$
+
+$$
+S_2(x)=0.6+2.4+0.6=3.6
+$$
+
+#### Bước 3
+
+$$
+S_3(x)=0.5\times 3.6 + 1.2\times 1.5 + 0.01\times 60
+$$
+
+$$
+S_3(x)=1.8+1.8+0.6=4.2
+$$
+
+#### Bước 4
+
+$$
+S(x)=4.2e^{-0.02\times 7}=4.2e^{-0.14}\approx 4.2\times 0.869=3.65
+$$
+
+Vậy ở regimen này:
+
+- $S_N(x)=4.2$
+- $s(x)=7$
+- $S(x)=3.65$
+
+### Định nghĩa feature map cho Mô hình 3
+
+Có hai lựa chọn chính.
+
+#### Lựa chọn tối giản
+
+$$
+\phi_{M3}^{(a)}(x)=S(x)
+$$
+
+#### Lựa chọn giàu hơn
+
+$$
+\phi_{M3}^{(b)}(x)
+=
+\begin{pmatrix}
+N(x) \\
+s(x) \\
+S_N(x) \\
+S(x)
+\end{pmatrix}
+$$
+
+Úc khuyên dùng lựa chọn giàu hơn, vì nó không nén toàn bộ lịch sử vào một con số duy nhất.
+
+### Kernel cho Mô hình 3
+
+#### Kernel tối giản
+
+$$
+k_{M3}^{(a)}(x,x^{\prime})
+=
+\tau_3^2
+\exp\left(
+-\frac{(S(x)-S(x^{\prime}))^2}{2\ell_{3S}^2}
+\right)
+$$
+
+#### Kernel giàu hơn
+
+$$
+k_{M3}^{(b)}(x,x^{\prime})
+=
+\tau_3^2
+\exp\left(
+-\frac{(N(x)-N(x^{\prime}))^2}{2\ell_{3N}^2}
+-\frac{(s(x)-s(x^{\prime}))^2}{2\ell_{3s}^2}
+-\frac{(S_N(x)-S_N(x^{\prime}))^2}{2\ell_{3Nstate}^2}
+-\frac{(S(x)-S(x^{\prime}))^2}{2\ell_{3S}^2}
+\right)
+$$
+
+### Ý nghĩa
+
+Hai regimens giống nhau nếu:
+
+- có số mũi gần nhau
+- được đo ở stage recency tương tự
+- tạo ra immune state sau mũi cuối tương tự
+- và state hiệu dụng tại thời điểm đánh giá cũng tương tự
+
+### Ưu điểm
+
+- có ý nghĩa cơ chế mạnh nhất
+- nén lịch sử phức tạp thành latent state giàu ý nghĩa sinh học
+- rất phù hợp nếu tin vào prime-boost dynamics
+
+### Hạn chế
+
+- phụ thuộc mạnh vào specification của state recursion
+- có thể quá cơ chế nếu dữ liệu không support
+- cần cẩn thận vì các tham số $\phi,\psi_1,\psi_2,\lambda$ mang giả định mô hình
+
+## So sánh ba hướng xây kernel
+
+### Kernel từ Mô hình 1
+
+- đơn giản nhất
+- dựa trên summary covariates hiện tại
+- dễ triển khai nhất
+- ít rủi ro cơ chế sai
+
+### Kernel từ Mô hình 2
+
+- vaccine-like hơn
+- mã hóa các contributions còn lại của từng mũi
+- hợp lý nếu tin vào jump-decay representation
+
+### Kernel từ Mô hình 3
+
+- cơ chế nhất
+- mã hóa latent immune state
+- mạnh nhất về mặt biological interpretation
+
+Không có cái nào mặc định vượt trội tuyệt đối. Chúng phù hợp với các mức độ niềm tin khác nhau về cấu trúc động học của vaccine response.
+
+## Kết hợp cả ba thành additive structured kernel
+
+Vì ba ý tưởng đều quan trọng, một hướng tự nhiên là dùng cả ba:
+
+$$
+k(x,x^{\prime})
+=
+w_1 k_{M1}(x,x^{\prime})
++
+w_2 k_{M2}(x,x^{\prime})
++
+w_3 k_{M3}(x,x^{\prime}),
+$$
+
+trong đó:
+
+- $w_1,w_2,w_3 \ge 0$
+- các weights có thể học từ data hoặc parameterize dưới dạng variance components
+
+Một dạng tương đương là
+
+$$
+k(x,x^{\prime})
+=
+\tau_1^2 k_{M1}(x,x^{\prime})
++
+\tau_2^2 k_{M2}(x,x^{\prime})
++
+\tau_3^2 k_{M3}(x,x^{\prime}).
+$$
+
+### Ý nghĩa
+
+Kernel tổng hợp này nói rằng similarity giữa hai regimens có ba thành phần:
+
+- similarity theo summary hiện tại
+- similarity theo các dấu vết miễn dịch còn lại
+- similarity theo latent state
+
+### Ưu điểm
+
+- linh hoạt
+- không buộc phải tin hoàn toàn vào một mô hình duy nhất
+- cho phép data quyết định thành phần nào quan trọng hơn
+
+### Hạn chế
+
+- nhiều hyperparameters hơn
+- cần dữ liệu đủ để nhận diện các lengthscales và variance components
+- cần tránh overfitting
+
+## Một ví dụ tổng hợp
+
+Xét hai regimens:
+
+$$
+x=(3,\ (1.0,2.0,1.5),\ (60,60),\ 7)
+$$
+
+và
+
+$$
+x^{\prime}=(3,\ (1.0,1.8,1.5),\ (56,60),\ 7)
+$$
+
+Ta thấy:
+
+- cùng số mũi
+- cùng thời gian từ mũi gần nhất
+- doses gần nhau
+- intervals cũng gần nhau
+
+Do đó:
+
+- $\phi_{M1}(x)$ và $\phi_{M1}(x^{\prime})$ sẽ khá gần
+- $\phi_{M2}(x)$ và $\phi_{M2}(x^{\prime})$ cũng gần
+- $S_N(x)$ và $S_N(x^{\prime})$ theo Mô hình 3 cũng gần
+
+Vì vậy cả ba kernels thành phần đều sẽ khá lớn, dẫn đến covariance tổng cũng lớn.
+
+Ngược lại, nếu so với một regimen chỉ có 1 mũi hoặc có thời gian từ mũi gần nhất rất dài, thì cả ba representations sẽ khác rõ hơn, làm covariance giảm đáng kể.
+
+## Hướng triển khai thực tế
+
+Nếu muốn triển khai theo hướng an toàn, ta có thể đi theo lộ trình sau.
+
+### Bước 1
+
+Bắt đầu với kernel từ Mô hình 1 vì dễ tính và dễ giải thích.
+
+### Bước 2
+
+Thêm kernel từ Mô hình 2 để đưa logic jump-decay vào.
+
+### Bước 3
+
+Nếu dữ liệu và scientific rationale đủ mạnh, thêm kernel từ Mô hình 3.
+
+### Bước 4
+
+So sánh các kernels bằng:
+
+- predictive fit
+- posterior uncertainty
+- BO performance
+- interpretability
+
+## Kết luận
+
+Ba mô hình outcome ban đầu không chỉ là ba cách fit dữ liệu. Chúng còn là ba nguồn ý tưởng rất mạnh để thiết kế kernel cho GP trong bài toán vaccine regimen.
+
+Cụ thể:
+
+- Mô hình 1 gợi ý xây kernel từ các summary covariates
+- Mô hình 2 gợi ý xây kernel từ jump-decay signatures
+- Mô hình 3 gợi ý xây kernel từ latent immune state
+
+Trong đó, với Mô hình 3, cách viết sạch và không nhập nhằng là:
+
+$$
+x=(N,\mathbf d,\boldsymbol\tau,s)
+$$
+
+$$
+S_1(x)=\psi_1 d_1
+$$
+
+$$
+S_k(x)=\phi S_{k-1}(x)+\psi_1 d_k+\psi_2 \tau_{k-1},\qquad k=2,\dots,N
+$$
+
+$$
+S_N(x)=\text{state sau mũi thứ }N
+$$
+
+$$
+S(x)=S_N(x)e^{-\lambda s(x)}
+$$
+
+và từ đó xây kernel bằng một feature map dựa trên $N(x)$, $s(x)$, $S_N(x)$, và $S(x)$.
+
+Nếu nhìn như một nhà thống kê sinh học, ý tưởng trung tâm là:
+
+> kernel không nhất thiết phải được định nghĩa từ khoảng cách Euclid thô trên input gốc; nó có thể và nên phản ánh structure của vaccine process mà ta tin là có ý nghĩa sinh học.
+
+Điều này chính là cầu nối giữa kiến thức chuyên ngành và Gaussian process modeling.
+
+## So sánh ba kernels được xây từ ba mô hình
+
+### Mục tiêu của phần này
+
+Phần này nhằm so sánh ba kernels đã được xây từ ba mô hình động học vaccine nhiều mũi tiêm, không phải chỉ ở mức công thức, mà ở mức tư duy mô hình hóa. Câu hỏi trung tâm là:
+
+- mỗi kernel đang xem hai regimens “giống nhau” theo nghĩa nào
+- mỗi kernel đang giả định điều gì về cấu trúc sinh học của dữ liệu
+- mỗi kernel mạnh ở đâu và yếu ở đâu
+- trong bối cảnh Bayesian optimization hoặc Gaussian process regression, kernel nào phù hợp hơn với mục tiêu nào
+
+Ta nhắc lại ba kernels:
+
+- kernel dựa trên các summary covariates của Mô hình 1
+- kernel dựa trên jump-decay signatures của Mô hình 2
+- kernel dựa trên latent immune state của Mô hình 3
+
+Điểm quan trọng là ba kernels này không loại trừ nhau. Chúng đại diện cho ba mức độ khác nhau của việc đưa cấu trúc sinh học vào GP.
+
+## Nhắc lại ba kernels
+
+### Kernel từ Mô hình 1
+
+Mô hình 1 gợi ý dùng các summary covariates hiện tại để mô tả mỗi regimen/history. Ta định nghĩa
+
+$$
+\phi_{M1}(x)
+=
+\begin{pmatrix}
+N \\
+s \\
+d_N \\
+c \\
+Ns
+\end{pmatrix},
+\qquad
+c=\sum_{k=1}^{N} d_k.
+$$
+
+Kernel tương ứng là
+
+$$
+k_{M1}(x,x^{\prime})
+=
+\tau_1^2
+\exp\left(
+-\frac{(N-N^{\prime})^2}{2\ell_{1N}^2}
+-\frac{(s-s^{\prime})^2}{2\ell_{1s}^2}
+-\frac{(d_N-d_N^{\prime})^2}{2\ell_{1d}^2}
+-\frac{(c-c^{\prime})^2}{2\ell_{1c}^2}
+-\frac{(Ns-N^{\prime} s^{\prime})^2}{2\ell_{1I}^2}
+\right).
+$$
+
+### Kernel từ Mô hình 2
+
+Mô hình 2 dùng jump-decay signatures. Với
+
+$$
+A(d)=\theta_0+\theta_1 d
+$$
+
+và
+
+$$
+\Delta_k(x)=s+\sum_{j=k}^{N-1}\tau_j,
+\qquad k=1,\dots,N,
+$$
+
+ta định nghĩa
+
+$$
+\phi_{M2}(x)
+=
+\begin{pmatrix}
+A(d_1)e^{-\lambda\Delta_1(x)} \\
+A(d_2)e^{-\lambda\Delta_2(x)} \\
+A(d_3)e^{-\lambda\Delta_3(x)}
+\end{pmatrix},
+$$
+
+với quy ước các thành phần không tồn tại được điền bằng $0$ nếu số mũi tối đa là $3$.
+
+Kernel tương ứng là
+
+$$
+k_{M2}(x,x^{\prime})
+=
+\tau_2^2
+\exp\left(
+-\sum_{r=1}^{3}
+\frac{\left(\phi_{M2,r}(x)-\phi_{M2,r}(x^{\prime})\right)^2}{2\ell_{2r}^2}
+\right).
+$$
+
+### Kernel từ Mô hình 3
+
+Mô hình 3 dùng latent immune state. Với
+
+$$
+x=(N,\mathbf d,\boldsymbol\tau,s),
+$$
+
+ta định nghĩa đệ quy
+
+$$
+S_1(x)=\psi_1 d_1
+$$
+
+và
+
+$$
+S_k(x)=\phi S_{k-1}(x)+\psi_1 d_k+\psi_2 \tau_{k-1},
+\qquad k=2,\dots,N.
+$$
+
+Sau đó
+
+$$
+S(x)=S_N(x)e^{-\lambda s(x)}.
+$$
+
+Một feature map giàu hơn là
+
+$$
+\phi_{M3}(x)
+=
+\begin{pmatrix}
+N(x) \\
+s(x) \\
+S_N(x) \\
+S(x)
+\end{pmatrix}.
+$$
+
+Kernel tương ứng là
+
+$$
+k_{M3}(x,x^{\prime})
+=
+\tau_3^2
+\exp\left(
+-\frac{(N(x)-N(x^{\prime}))^2}{2\ell_{3N}^2}
+-\frac{(s(x)-s(x^{\prime}))^2}{2\ell_{3s}^2}
+-\frac{(S_N(x)-S_N(x^{\prime}))^2}{2\ell_{3Nstate}^2}
+-\frac{(S(x)-S(x^{\prime}))^2}{2\ell_{3S}^2}
+\right).
+$$
+
+## Khung so sánh
+
+Ta sẽ so sánh ba kernels theo các tiêu chí sau:
+
+- đối tượng similarity mà kernel đang mã hóa
+- mức độ bám sát biology
+- mức độ coarsening hay compression của treatment history
+- khả năng diễn giải
+- rủi ro misspecification
+- tính phù hợp cho Bayesian optimization
+- tính khả thi khi triển khai thực nghiệm
+
+## So sánh theo đối tượng similarity
+
+### Kernel của Mô hình 1
+
+Kernel này xem hai regimens giống nhau nếu chúng giống nhau ở các summary hiện tại. Vì vậy, similarity ở đây là similarity ở mức:
+
+- cùng số mũi
+- cùng thời gian từ mũi gần nhất
+- cùng dose gần nhất
+- cùng cumulative dose
+- cùng stage-by-time interaction
+
+Nói cách khác, nó là một kernel trên các covariates mô tả bối cảnh hiện tại của regimen/history.
+
+### Kernel của Mô hình 2
+
+Kernel này xem hai regimens giống nhau nếu các “dấu vết miễn dịch còn lại” từ từng mũi tương tự nhau. Similarity ở đây không còn chỉ là similarity của covariates, mà là similarity của các contributions hiện còn hiệu lực từ từng injection.
+
+Nói cách khác, nó gần hơn với một immune-response representation.
+
+### Kernel của Mô hình 3
+
+Kernel này xem hai regimens giống nhau nếu chúng tạo ra latent immune state tương tự nhau. Similarity không còn đặt trên các summary observed đơn giản, cũng không chỉ đặt trên các contributions cộng dồn, mà đặt trên một đại lượng cơ chế được suy ra từ toàn bộ history.
+
+Nói cách khác, đây là similarity ở mức immune state.
+
+## So sánh về mức độ bám sát biology
+
+### Mô hình 1
+
+Kernel của Mô hình 1 bám sát biology ở mức thấp đến trung bình. Nó phản ánh được rằng:
+
+- số mũi quan trọng
+- thời gian từ mũi gần nhất quan trọng
+- dose gần nhất quan trọng
+
+Nhưng nó không mô tả rõ việc mỗi mũi để lại một đóng góp riêng hay immune memory được cập nhật như thế nào.
+
+Vì vậy, đây là một biological abstraction ở mức summary, không phải ở mức process.
+
+### Mô hình 2
+
+Kernel của Mô hình 2 bám sát biology ở mức trung bình đến cao. Nó phản ánh được trực giác quan trọng rằng:
+
+- mỗi mũi tạo một jump
+- jump đó giảm theo thời gian
+- outcome hiện tại phản ánh tổng phần đóng góp còn lại
+
+Điều này phù hợp với nhiều trực giác về vaccine kinetics, đặc biệt là khi muốn nắm bắt prime-boost effects mà chưa cần xây mechanistic state.
+
+### Mô hình 3
+
+Kernel của Mô hình 3 bám sát biology ở mức cao nhất trong ba kernel. Nó mã hóa trực tiếp một latent immune state, và giả định rằng mũi sau cập nhật trạng thái miễn dịch tích lũy thay vì chỉ cộng thêm một contribution mới.
+
+Nếu giả định này phù hợp với sinh học của vaccine đang nghiên cứu, đây là kernel có biological interpretation mạnh nhất.
+
+## So sánh về mức độ nén thông tin
+
+### Mô hình 1
+
+Mô hình 1 nén treatment history thành một bộ summary đơn giản. Đây là mức nén vừa phải. Nó vẫn giữ nhiều thông tin quan trọng, nhưng bỏ qua chi tiết sâu hơn của lịch sử từng mũi.
+
+### Mô hình 2
+
+Mô hình 2 giữ chi tiết ở mức từng mũi bằng jump-decay signature. So với Mô hình 1, nó ít nén hơn, vì nó phân biệt từng contribution của từng injection.
+
+### Mô hình 3
+
+Mô hình 3 có hai khả năng.
+
+Nếu chỉ dùng $S(x)$ thì nén rất mạnh, vì toàn bộ history bị nén thành một số.
+
+Nếu dùng feature map giàu hơn gồm $N(x)$, $s(x)$, $S_N(x)$, và $S(x)$ thì mức nén bớt cực đoan hơn, nhưng vẫn lớn hơn Mô hình 2.
+
+Do đó, Mô hình 3 thường cần cẩn thận để tránh nén quá mức.
+
+## So sánh về khả năng diễn giải
+
+### Mô hình 1
+
+Đây là kernel dễ diễn giải nhất với người làm thống kê ứng dụng và lâm sàng. Mỗi thành phần của feature map đều là một quantity quen thuộc:
+
+- số mũi
+- dose gần nhất
+- cumulative dose
+- thời gian từ mũi gần nhất
+
+Điều này giúp mô tả scientific rationale rất dễ.
+
+### Mô hình 2
+
+Kernel này vẫn diễn giải tốt, nhưng cần giải thích thêm ý tưởng về “dấu vết miễn dịch còn lại” của từng mũi. Với người đọc có trực giác vaccine cơ bản, nó vẫn rất dễ chấp nhận.
+
+### Mô hình 3
+
+Kernel này khó diễn giải hơn vì dựa trên latent state. Một khi đã chấp nhận mô hình latent state, interpretation rất đẹp. Nhưng nếu chưa chấp nhận, thì người đọc có thể hỏi:
+
+- tại sao recursion lại có dạng đó
+- tại sao state này là quantity phù hợp
+- tại sao update equation được chọn như vậy
+
+Do đó, nó mạnh về interpretation nếu model đúng, nhưng demanding hơn trong phần biện minh.
+
+## So sánh về rủi ro misspecification
+
+### Mô hình 1
+
+Rủi ro misspecification thấp nhất. Vì feature map khá thô và tương đối agnostic, nó ít buộc dữ liệu phải tuân theo một cơ chế động học cụ thể.
+
+Giá phải trả là nó có thể không đủ giàu để phản ánh biology sâu.
+
+### Mô hình 2
+
+Rủi ro misspecification trung bình. Nó đòi hỏi assumption rằng contribution của mỗi mũi có dạng jump rồi decay theo một cấu trúc đã chọn. Nếu kinetics thực tế quá khác, kernel có thể trở nên không phù hợp.
+
+### Mô hình 3
+
+Rủi ro misspecification cao nhất. Nó phụ thuộc vào recursion của latent state, và recursion đó là một structural assumption mạnh. Nếu immune system không tiến hóa theo cơ chế đó, kernel có thể encode sai geometry của regimen space.
+
+Vì vậy, kernel của Mô hình 3 cần được dùng khi ta có rationale sinh học đủ mạnh.
+
+## So sánh về tính phù hợp cho Bayesian optimization
+
+### Mô hình 1
+
+Rất phù hợp như một starting kernel trong Bayesian optimization. Nó tạo ra một geometry hợp lý hơn raw Euclidean distance, nhưng vẫn đủ đơn giản để ổn định.
+
+Nếu mục tiêu là optimization thực dụng, đây là lựa chọn rất tốt để bắt đầu.
+
+### Mô hình 2
+
+Rất phù hợp nếu objective thực sự gắn với short-term và medium-term immune contributions. Trong bài toán down-selection của vaccine regimens, điều này khá tự nhiên, nên kernel của Mô hình 2 có tiềm năng rất mạnh.
+
+### Mô hình 3
+
+Phù hợp nếu bạn tin rằng BO nên hoạt động trên một latent biological manifold thay vì chỉ trên observed summaries. Nếu assumption này đúng, kernel của Mô hình 3 có thể rất mạnh cho extrapolation và generalization. Nhưng nếu assumption không đúng, performance có thể tệ hơn.
+
+## So sánh về khả năng triển khai thực nghiệm
+
+### Mô hình 1
+
+Dễ triển khai nhất. Chỉ cần tính các summary covariates rồi dùng kernel chuẩn.
+
+### Mô hình 2
+
+Triển khai được, nhưng cần định nghĩa rõ:
+
+- $A(d)$
+- $\lambda$
+- số mũi tối đa
+- quy tắc padding cho các histories ngắn hơn
+
+Tuy vậy, đây vẫn là mức triển khai thực tế tốt.
+
+### Mô hình 3
+
+Triển khai được, nhưng đòi hỏi nhiều lựa chọn hơn:
+
+- chọn recursion cho $S_k(x)$
+- chọn các tham số $\phi,\psi_1,\psi_2,\lambda$
+- quyết định dùng $S(x)$ alone hay dùng feature map giàu hơn
+
+Vì vậy, nó phức tạp nhất để implement một cách đáng tin cậy.
+
+## Ví dụ so sánh trực tiếp ba kernels
+
+Xét hai regimens:
+
+$$
+x=(3,\ (1.0,2.0,1.5),\ (60,60),\ 7)
+$$
+
+và
+
+$$
+x^{\prime}=(3,\ (1.0,1.8,1.5),\ (56,60),\ 7).
+$$
+
+Hai regimens này rất gần nhau, khác nhau nhẹ ở:
+
+- dose mũi 2
+- khoảng cách giữa mũi 1 và mũi 2
+
+### Dưới kernel của Mô hình 1
+
+Similarity vẫn cao vì:
+
+- cùng số mũi
+- cùng thời gian từ mũi gần nhất
+- dose gần nhất như nhau
+- cumulative dose khá gần
+
+### Dưới kernel của Mô hình 2
+
+Similarity cũng cao, nhưng mức giảm có thể nhạy hơn so với Mô hình 1, vì contribution còn lại của mũi 2 sẽ thay đổi nhẹ theo cả dose mũi 2 lẫn khoảng cách trước nó.
+
+### Dưới kernel của Mô hình 3
+
+Similarity phụ thuộc vào việc thay đổi nhỏ đó có làm $S_N(x)$ và $S(x)$ thay đổi nhiều không. Nếu recursion state rất nhạy với dose mũi 2 và $\tau_1$, kernel có thể phản ứng mạnh hơn cả Mô hình 2. Nếu không, nó có thể xem hai regimens này gần như rất giống nhau.
+
+Điều này cho thấy ba kernels không chỉ khác nhau ở công thức, mà khác nhau ở cách chúng cảm nhận geometry của regimen space.
+
+## Bảng tổng kết so sánh
+
+### Kernel từ Mô hình 1
+
+- bản chất: summary-based kernel
+- mức độ biology: thấp đến trung bình
+- diễn giải: dễ nhất
+- misspecification: thấp nhất
+- triển khai: dễ nhất
+- phù hợp: baseline kernel rất tốt
+
+### Kernel từ Mô hình 2
+
+- bản chất: jump-decay signature kernel
+- mức độ biology: trung bình đến cao
+- diễn giải: tốt
+- misspecification: trung bình
+- triển khai: trung bình
+- phù hợp: rất hợp cho vaccine regimen optimization
+
+### Kernel từ Mô hình 3
+
+- bản chất: latent-state-informed kernel
+- mức độ biology: cao nhất
+- diễn giải: mạnh nhưng demanding
+- misspecification: cao nhất
+- triển khai: khó nhất
+- phù hợp: dùng khi có rationale mechanistic rõ
+
+## Khi nào nên ưu tiên kernel nào?
+
+### Nếu mục tiêu là một kernel đầu tiên, robust, dễ defend
+
+Ưu tiên kernel từ Mô hình 1.
+
+### Nếu mục tiêu là encode vaccine dynamics rõ hơn nhưng chưa muốn quá cơ chế
+
+Ưu tiên kernel từ Mô hình 2.
+
+### Nếu mục tiêu là khai thác một mechanistic latent representation
+
+Ưu tiên kernel từ Mô hình 3.
+
+## Kết hợp ba kernels
+
+Vì ba kernels đại diện cho ba notion similarity khác nhau, việc kết hợp chúng thường hợp lý hơn việc chọn duy nhất một kernel.
+
+Ta dùng additive structured kernel:
+
+$$
+k(x,x^{\prime})
+=
+\tau_1^2 k_{M1}(x,x^{\prime})
++
+\tau_2^2 k_{M2}(x,x^{\prime})
++
+\tau_3^2 k_{M3}(x,x^{\prime}).
+$$
+
+Kernel này cho phép:
+
+- một phần similarity đến từ summaries hiện tại
+- một phần đến từ jump-decay signatures
+- một phần đến từ latent immune state
+
+Đây là một cách thỏa hiệp giữa robustness và biological richness.
+
+## Kết luận
+
+Không có một kernel duy nhất luôn luôn tốt nhất.
+
+Nếu nhìn bằng con mắt của một nhà thống kê sinh học và researcher kỹ tính, thì điều quan trọng là phải hỏi:
+
+- ta tin biology ở mức nào
+- ta muốn borrow strength theo summary hay theo process
+- ta chấp nhận mức độ cơ chế hóa đến đâu
+- dữ liệu có đủ support cho kernel giàu hơn hay không
+
+Từ đó:
+
+- kernel của Mô hình 1 là lựa chọn an toàn và dễ dùng nhất
+- kernel của Mô hình 2 là lựa chọn cân bằng nhất giữa sinh học và tính thực dụng
+- kernel của Mô hình 3 là lựa chọn tham vọng nhất và cơ chế nhất
+
+Trong thực tế, một additive structured kernel kết hợp cả ba hướng thường là một lựa chọn rất mạnh, vì nó không bắt bạn phải tin hoàn toàn vào một representation duy nhất của vaccine dynamics.
+
+

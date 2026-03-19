@@ -1,0 +1,807 @@
+---
+title: "Ba mô hình cho dữ liệu vaccine trial nhiều mũi tiêm theo thời gian"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+## Giới thiệu
+
+Trong vaccine trials, đặc biệt ở giai đoạn Phase II, dữ liệu thường không phải là dữ liệu cắt ngang đơn giản mà là dữ liệu dọc theo thời gian với nhiều lần can thiệp. Một người tham gia có thể nhận nhiều mũi tiêm theo một lịch định trước, ví dụ mũi đầu tại ngày $0$, mũi thứ hai sau $2$ tháng, mũi thứ ba sau một khoảng thời gian nữa. Sau mỗi mũi tiêm, outcome miễn dịch có thể được đo ở nhiều thời điểm, ví dụ $7$ ngày sau tiêm, $28$ ngày sau tiêm, hoặc nhiều tháng sau mũi cuối.
+
+Vì vậy, cấu trúc dữ liệu của vaccine trial có hai đặc điểm rất quan trọng:
+
+### Outcome được đo lặp lại theo thời gian
+
+Ví dụ, với subject $i$ và lần đo thứ $j$, ta có outcome $Y_{ij}$ tại thời điểm $t_{ij}$. Outcome này có thể là:
+
+- nồng độ kháng thể
+- log antibody titre
+- neutralizing antibody titre
+- cellular immune response
+- một marker miễn dịch liên tục khác
+
+Do đó, đây là dữ liệu longitudinal.
+
+### Intervention cũng thay đổi theo thời gian
+
+Khác với longitudinal data thông thường, ở đây treatment không cố định từ đầu đến cuối. Subject có thể nhận nhiều mũi tiêm ở các thời điểm khác nhau. Vì vậy, outcome tại thời điểm $t$ không chỉ phụ thuộc vào thời gian, mà còn phụ thuộc vào **lịch sử tiêm chủng** trước thời điểm đó.
+
+Nói cách khác, dữ liệu vaccine nhiều mũi nên được nhìn như:
+
+$$
+\text{longitudinal outcome under time-varying treatment history}.
+$$
+
+Điều này dẫn đến câu hỏi thống kê quan trọng:
+
+> Ta nên mô hình hóa dữ liệu này như thế nào để phản ánh được số mũi tiêm, liều lượng, khoảng cách giữa các mũi, và thời gian kể từ mũi gần nhất?
+
+Tài liệu này trình bày ba mô hình cho bài toán đó:
+
+- Mô hình 1: mixed model với các biến giải thích biến thiên theo thời gian
+- Mô hình 2: jump-decay vaccine model
+- Mô hình 3: latent state-space immune model
+
+Mỗi mô hình sẽ được trình bày với:
+
+- động cơ xây dựng
+- ký hiệu và công thức
+- ý nghĩa của từng thành phần
+- ưu điểm và hạn chế
+- ví dụ cụ thể để hiểu sự biến thiên của outcome theo số mũi tiêm, thời gian, và lịch sử tiêm chủng
+
+## Ký hiệu chung
+
+Cho subject $i = 1,\dots,n$ và lần đo thứ $j = 1,\dots,n_i$.
+
+- $Y_{ij}$: outcome miễn dịch của subject $i$ tại lần đo thứ $j$
+- $t_{ij}$: thời điểm đo tương ứng
+- $K_i$: tổng số mũi tiêm theo regimen của subject $i$
+- $T_{ik}$: thời điểm của mũi tiêm thứ $k$, với $k = 1,\dots,K_i$
+- $d_{ik}$: dose của mũi tiêm thứ $k$
+- $N_i(t)$: số mũi đã nhận đến thời điểm $t$
+- $s_i(t)$: thời gian kể từ mũi gần nhất đến thời điểm $t$
+
+Cụ thể,
+
+$$
+N_i(t)=\sum_{k=1}^{K_i} I(T_{ik}\le t)
+$$
+
+và nếu $N_i(t)\ge 1$ thì
+
+$$
+s_i(t)=t-T_{i,N_i(t)}.
+$$
+
+Ta cũng có thể định nghĩa lịch sử điều trị đến thời điểm $t$ là
+
+$$
+\mathcal H_i(t)=\{(T_{i1},d_{i1}),\dots,(T_{i,N_i(t)},d_{i,N_i(t)})\}.
+$$
+
+## Động cơ chung cho ba mô hình
+
+Có ba cách nhìn tự nhiên về dữ liệu vaccine nhiều mũi:
+
+### Cách nhìn thứ nhất
+
+Ta không cố mô hình hóa cơ chế sinh học sâu, mà chỉ xây một mô hình hồi quy longitudinal trong đó outcome phụ thuộc vào:
+
+- số mũi đã nhận
+- thời gian từ mũi gần nhất
+- dose gần nhất
+- tương tác giữa các đại lượng này
+
+Đây là cách nhìn thực dụng nhất.
+
+### Cách nhìn thứ hai
+
+Mỗi mũi tiêm tạo ra một cú hích miễn dịch, rồi hiệu ứng của cú hích đó giảm dần theo thời gian. Outcome tại thời điểm hiện tại là tổng phần hiệu ứng còn lại của tất cả các mũi đã xảy ra trước đó.
+
+Đây là cách nhìn jump-decay.
+
+### Cách nhìn thứ ba
+
+Không xem outcome là tổng trực tiếp của các cú hích, mà xem có một trạng thái miễn dịch ẩn. Mỗi mũi tiêm cập nhật trạng thái này, và trạng thái đó mới là thứ sinh ra outcome đo được.
+
+Đây là cách nhìn latent state-space.
+
+## Mô hình 1: Mixed model với time-varying covariates
+
+### Động cơ
+
+Mô hình này phù hợp khi ta muốn một mô hình đơn giản, dễ diễn giải, và dễ ước lượng. Ta không mô hình hóa cơ chế vaccine một cách sâu, mà chỉ xem outcome tại mỗi lần đo là hàm của một số covariates quan trọng tại thời điểm đo đó.
+
+Đặc biệt, ta muốn phản ánh:
+
+- đã tiêm bao nhiêu mũi tính đến thời điểm đó
+- đã bao lâu kể từ mũi gần nhất
+- dose của mũi gần nhất là bao nhiêu
+
+### Công thức mô hình
+
+Một specification cụ thể là:
+
+$$
+Y_{ij}
+=
+\beta_0
++
+b_{0i}
++
+\beta_1 N_i(t_{ij})
++
+\beta_2 s_i(t_{ij})
++
+\beta_3 d_{i,N_i(t_{ij})}
++
+\beta_4 N_i(t_{ij}) s_i(t_{ij})
++
+\varepsilon_{ij},
+$$
+
+trong đó
+
+$$
+b_{0i}\sim N(0,\sigma_b^2),
+\qquad
+\varepsilon_{ij}\sim N(0,\sigma^2).
+$$
+
+### Ý nghĩa của từng thành phần
+
+#### Intercept chung
+
+$$
+\beta_0
+$$
+
+là mức outcome trung bình khi bỏ qua các yếu tố khác.
+
+#### Random intercept theo subject
+
+$$
+b_{0i}
+$$
+
+phản ánh khác biệt cá thể giữa các subject.
+
+#### Số mũi đã tiêm
+
+$$
+\beta_1 N_i(t_{ij})
+$$
+
+thể hiện effect của việc đã nhận thêm mũi tiêm.
+
+#### Thời gian kể từ mũi gần nhất
+
+$$
+\beta_2 s_i(t_{ij})
+$$
+
+thể hiện effect của việc outcome thay đổi theo thời gian sau mũi gần nhất.
+
+#### Dose của mũi gần nhất
+
+$$
+\beta_3 d_{i,N_i(t_{ij})}
+$$
+
+thể hiện effect trực tiếp của dose gần nhất.
+
+#### Tương tác giữa số mũi và thời gian từ mũi gần nhất
+
+$$
+\beta_4 N_i(t_{ij}) s_i(t_{ij})
+$$
+
+đây là term quan trọng. Nó cho phép tốc độ thay đổi theo thời gian sau mũi gần nhất khác nhau giữa các stage sau mũi 1, mũi 2, mũi 3.
+
+Vì
+
+$$
+\beta_2 s_i(t_{ij}) + \beta_4 N_i(t_{ij}) s_i(t_{ij})
+=
+\big(\beta_2 + \beta_4 N_i(t_{ij})\big) s_i(t_{ij}),
+$$
+
+nên slope theo $s_i(t)$ phụ thuộc vào số mũi đã tiêm.
+
+### Ví dụ cụ thể
+
+Chọn tham số:
+
+$$
+\beta_0 = 0,\quad
+\beta_1 = 2,\quad
+\beta_2 = -0.10,\quad
+\beta_3 = 0,\quad
+\beta_4 = 0.03.
+$$
+
+Bỏ qua $b_{0i}$ và $\varepsilon_{ij}$ để nhìn mean cho rõ.
+
+Khi đó:
+
+$$
+Y(t) = 2N(t) - 0.10\, s(t) + 0.03\, N(t)s(t).
+$$
+
+Hay:
+
+$$
+Y(t)=2N(t)+\big(-0.10+0.03N(t)\big)s(t).
+$$
+
+#### Sau mũi 1
+
+Nếu $N(t)=1$ thì
+
+$$
+Y(t)=2-0.07\,s(t).
+$$
+
+Tức là mỗi thêm một ngày kể từ mũi gần nhất, outcome giảm $0.07$ đơn vị.
+
+Nếu đo tại $7$ ngày sau mũi 1:
+
+$$
+Y = 2 - 0.07\times 7 = 1.51.
+$$
+
+#### Sau mũi 2
+
+Nếu $N(t)=2$ thì
+
+$$
+Y(t)=4-0.04\,s(t).
+$$
+
+Nếu đo tại $7$ ngày sau mũi 2:
+
+$$
+Y = 4 - 0.04\times 7 = 3.72.
+$$
+
+#### Sau mũi 3
+
+Nếu $N(t)=3$ thì
+
+$$
+Y(t)=6-0.01\,s(t).
+$$
+
+Nếu đo tại $7$ ngày sau mũi 3:
+
+$$
+Y = 6 - 0.01\times 7 = 5.93.
+$$
+
+### Diễn giải ví dụ
+
+Ví dụ trên cho thấy:
+
+- sau mũi 1, outcome giảm khá nhanh theo thời gian
+- sau mũi 2, outcome vẫn giảm nhưng chậm hơn
+- sau mũi 3, outcome gần như bền hơn nhiều
+
+Interaction term cho phép phản ánh chuyện booster sau có thể tạo đáp ứng bền hơn prime đầu tiên.
+
+### Ưu điểm
+
+- dễ hiểu
+- dễ fit
+- phù hợp khi muốn mô hình mô tả thực dụng
+- useful như một mô hình baseline
+
+### Hạn chế
+
+- không thật sự mang cấu trúc vaccine biology mạnh
+- số mũi đi vào như một covariate, không phải một quá trình sinh học
+- khó phản ánh rõ “jump rồi decay” sau từng mũi
+
+## Mô hình 2: Jump-decay vaccine model
+
+### Động cơ
+
+Mô hình này xuất phát từ trực giác vaccine rất tự nhiên:
+
+- mỗi mũi tiêm tạo một cú hích miễn dịch
+- cú hích đó giảm dần theo thời gian
+- outcome tại thời điểm hiện tại là tổng phần hiệu ứng còn lại của các mũi trước đó
+
+### Công thức mô hình
+
+Ta xét:
+
+$$
+Y_{ij}
+=
+\mu_i
++
+\sum_{k=1}^{K_i}
+I(T_{ik}\le t_{ij})
+A(d_{ik})
+\exp\{-\lambda (t_{ij}-T_{ik})\}
++
+\varepsilon_{ij},
+$$
+
+với
+
+$$
+\varepsilon_{ij}\sim N(0,\sigma^2).
+$$
+
+Ta chọn
+
+$$
+A(d_{ik})=\theta_0+\theta_1 d_{ik}.
+$$
+
+Khi đó:
+
+$$
+Y_{ij}
+=
+\mu_i
++
+\sum_{k=1}^{K_i}
+I(T_{ik}\le t_{ij})
+(\theta_0+\theta_1 d_{ik})
+\exp\{-\lambda (t_{ij}-T_{ik})\}
++
+\varepsilon_{ij}.
+$$
+
+### Ý nghĩa của từng thành phần
+
+#### Baseline
+
+$$
+\mu_i
+$$
+
+là mức nền miễn dịch của subject.
+
+#### Jump amplitude
+
+$$
+A(d_{ik})=\theta_0+\theta_1 d_{ik}
+$$
+
+là biên độ cú hích của mũi $k$.
+
+#### Decay
+
+$$
+\exp\{-\lambda(t_{ij}-T_{ik})\}
+$$
+
+thể hiện phần còn lại của cú hích đó tại thời điểm đo.
+
+#### Indicator
+
+$$
+I(T_{ik}\le t_{ij})
+$$
+
+đảm bảo rằng mũi nào chưa xảy ra thì chưa thể ảnh hưởng tới outcome.
+
+### Ví dụ cụ thể
+
+Xét lịch tiêm:
+
+- $T_1=0$
+- $T_2=60$
+- $T_3=120$
+
+Dose:
+
+- $d_1=1$
+- $d_2=2$
+- $d_3=1.5$
+
+Tham số:
+
+$$
+\mu = 0.50,\qquad
+\theta_0 = 1.0,\qquad
+\theta_1 = 0.5,\qquad
+\lambda = 0.02.
+$$
+
+Khi đó:
+
+$$
+A(d_1)=1.5,\qquad
+A(d_2)=2.0,\qquad
+A(d_3)=1.75.
+$$
+
+Mean outcome là:
+
+$$
+Y(t)
+=
+0.50
++
+1.5e^{-0.02t}
++
+I(t\ge 60)\,2.0e^{-0.02(t-60)}
++
+I(t\ge 120)\,1.75e^{-0.02(t-120)}.
+$$
+
+### Tính tại các thời điểm
+
+#### Ngày 7 sau mũi 1
+
+$$
+Y(7)=0.50+1.5e^{-0.14}\approx 1.804.
+$$
+
+#### Ngày 30 sau mũi 1
+
+$$
+Y(30)=0.50+1.5e^{-0.6}\approx 1.324.
+$$
+
+#### Ngày 67, tức 7 ngày sau mũi 2
+
+$$
+Y(67)
+=
+0.50 + 1.5e^{-1.34} + 2.0e^{-0.14}
+\approx 2.631.
+$$
+
+#### Ngày 100, tức 40 ngày sau mũi 2
+
+$$
+Y(100)
+=
+0.50 + 1.5e^{-2} + 2.0e^{-0.8}
+\approx 1.601.
+$$
+
+#### Ngày 127, tức 7 ngày sau mũi 3
+
+$$
+Y(127)
+=
+0.50 + 1.5e^{-2.54} + 2.0e^{-1.34} + 1.75e^{-0.14}
+\approx 2.664.
+$$
+
+### Diễn giải ví dụ
+
+Mô hình này cho ta thấy:
+
+- mũi 1 tạo jump đầu tiên
+- theo thời gian, contribution của mũi 1 giảm dần
+- khi mũi 2 xảy ra, một jump mới được cộng vào, làm outcome tăng mạnh
+- mũi 3 tiếp tục tạo jump mới
+- outcome tại thời điểm hiện tại là tổng phần còn lại từ các cú hích trước đó
+
+### Ưu điểm
+
+- rất phù hợp với trực giác vaccine
+- dễ giải thích về mặt sinh học
+- thể hiện rõ từng mũi tiêm đóng góp như thế nào
+
+### Hạn chế
+
+- phải chọn dạng jump và dạng decay
+- nếu kinetics thật phức tạp, mô hình có thể hơi đơn giản
+- chưa mô tả rõ cơ chế latent của immune memory
+
+## Mô hình 3: Latent state-space immune model
+
+### Động cơ
+
+Mô hình này đi sâu hơn một bước. Nó không coi outcome hiện tại là tổng trực tiếp của các dấu vết từ các mũi trước, mà giả định rằng có một **trạng thái miễn dịch ẩn** đang tiến hóa theo thời gian.
+
+Mỗi mũi tiêm:
+
+- cập nhật trạng thái miễn dịch đó
+- rồi trạng thái này decay giữa các lần đo
+
+Outcome quan sát được chỉ là noisy measurement của trạng thái ẩn.
+
+### Công thức mô hình
+
+#### State update sau mũi thứ $k$
+
+$$
+S_{i,k}
+=
+\phi S_{i,k-1}
++
+\psi_1 d_{i,k}
++
+\psi_2 \tau_{i,k-1}
++
+\eta_{i,k},
+$$
+
+với
+
+$$
+\eta_{i,k}\sim N(0,Q).
+$$
+
+Với mũi đầu, ta lấy đơn giản:
+
+$$
+S_{i,1}=\psi_1 d_{i,1}+\eta_{i,1}.
+$$
+
+#### Decay từ mũi gần nhất đến thời điểm đo
+
+Nếu $t_{ij}$ nằm sau mũi $k$, thì:
+
+$$
+S_i(t_{ij})
+=
+S_{i,k}\exp\{-\lambda(t_{ij}-T_{i,k})\}.
+$$
+
+#### Observation model
+
+$$
+Y_{ij}=S_i(t_{ij})+\varepsilon_{ij},
+\qquad
+\varepsilon_{ij}\sim N(0,\sigma^2).
+$$
+
+### Ý nghĩa của từng thành phần
+
+#### Memory carry-over
+
+$$
+\phi S_{i,k-1}
+$$
+
+là phần trạng thái miễn dịch từ giai đoạn trước còn được giữ lại sau mũi mới.
+
+#### Effect của dose mới
+
+$$
+\psi_1 d_{i,k}
+$$
+
+là phần đóng góp trực tiếp của dose mới.
+
+#### Effect của khoảng cách giữa hai mũi
+
+$$
+\psi_2 \tau_{i,k-1}
+$$
+
+cho phép khoảng cách giữa hai mũi ảnh hưởng đến chất lượng boosting.
+
+#### Decay theo thời gian sau mũi gần nhất
+
+$$
+\exp\{-\lambda(t_{ij}-T_{i,k})\}
+$$
+
+mô tả sự giảm dần của trạng thái miễn dịch sau mũi gần nhất.
+
+### Ví dụ cụ thể
+
+Xét cùng lịch tiêm:
+
+- $T_1=0$
+- $T_2=60$
+- $T_3=120$
+
+Dose:
+
+- $d_1=1.0$
+- $d_2=2.0$
+- $d_3=1.5$
+
+Tham số:
+
+$$
+\phi=0.50,\qquad
+\psi_1=1.20,\qquad
+\psi_2=0.01,\qquad
+\lambda=0.02.
+$$
+
+Bỏ qua noise để nhìn mean.
+
+### Tính state sau từng mũi
+
+#### Sau mũi 1
+
+$$
+S_1=\psi_1 d_1 = 1.20\times 1.0 = 1.20.
+$$
+
+#### Sau mũi 2
+
+$$
+S_2
+=
+0.50\times 1.20
++
+1.20\times 2.0
++
+0.01\times 60
+=
+0.60+2.40+0.60=3.60.
+$$
+
+#### Sau mũi 3
+
+$$
+S_3
+=
+0.50\times 3.60
++
+1.20\times 1.5
++
+0.01\times 60
+=
+1.80+1.80+0.60=4.20.
+$$
+
+### Tính outcome tại các thời điểm
+
+#### Ngày 7 sau mũi 1
+
+$$
+Y(7)=1.20e^{-0.14}\approx 1.043.
+$$
+
+#### Ngày 30 sau mũi 1
+
+$$
+Y(30)=1.20e^{-0.6}\approx 0.659.
+$$
+
+#### Ngày 67, tức 7 ngày sau mũi 2
+
+$$
+Y(67)=3.60e^{-0.14}\approx 3.128.
+$$
+
+#### Ngày 100, tức 40 ngày sau mũi 2
+
+$$
+Y(100)=3.60e^{-0.8}\approx 1.616.
+$$
+
+#### Ngày 127, tức 7 ngày sau mũi 3
+
+$$
+Y(127)=4.20e^{-0.14}\approx 3.650.
+$$
+
+### Diễn giải ví dụ
+
+Mô hình này cho thấy một logic rất khác:
+
+- sau mũi 1, system đạt state $S_1$
+- mũi 2 không chỉ cộng thêm một contribution mới, mà cập nhật toàn bộ trạng thái thành $S_2$
+- mũi 3 lại cập nhật toàn bộ thành $S_3$
+
+Tức là mỗi mũi mới không chỉ tạo “một dấu vết nữa”, mà can thiệp vào **toàn bộ trạng thái miễn dịch của hệ thống**.
+
+### Ảnh hưởng của từng term
+
+#### Term $\phi S_{k-1}$
+
+Nếu $\phi$ lớn, history từ mũi trước đóng vai trò mạnh hơn.
+
+#### Term $\psi_1 d_k$
+
+Dose lớn hơn làm state sau mũi mới tăng mạnh hơn.
+
+#### Term $\psi_2 \tau_{k-1}$
+
+Khoảng cách giữa các mũi có thể cải thiện hoặc làm kém boosting tùy dấu của $\psi_2$.
+
+#### Term $e^{-\lambda(t-T_k)}$
+
+Thời gian sau mũi gần nhất càng dài thì state càng giảm.
+
+### Ưu điểm
+
+- gần với cơ chế miễn dịch hơn
+- diễn giải tốt nếu quan tâm immune memory
+- phù hợp khi muốn mô hình hóa prime-boost process như một hệ động
+
+### Hạn chế
+
+- khó fit nhất
+- nhiều tham số hơn
+- dễ gặp vấn đề identifiability nếu dữ liệu mỏng
+
+## So sánh ba mô hình
+
+### Mô hình 1
+
+Tập trung vào mô tả thống kê:
+
+- số mũi
+- thời gian từ mũi gần nhất
+- dose gần nhất
+- interactions
+
+Đây là mô hình practical nhất.
+
+### Mô hình 2
+
+Mỗi mũi tạo một jump rồi decay.
+
+Đây là mô hình vaccine-like nhất nếu muốn một cơ chế đơn giản nhưng hợp logic sinh học.
+
+### Mô hình 3
+
+Có một latent immune state được cập nhật qua các mũi.
+
+Đây là mô hình mechanistic nhất và giàu cấu trúc nhất.
+
+## Khi nào nên dùng mô hình nào?
+
+### Nếu muốn một baseline model dễ fit và dễ diễn giải
+
+Dùng **Mô hình 1**.
+
+### Nếu muốn giữ trực giác vaccine rất rõ nhưng chưa quá nặng
+
+Dùng **Mô hình 2**.
+
+### Nếu muốn mô hình hóa immune memory và dynamics sâu hơn
+
+Dùng **Mô hình 3**.
+
+## Kết luận
+
+Ba mô hình này phản ánh ba mức độ khác nhau của modeling:
+
+- **Mô hình 1**: statistical regression view
+- **Mô hình 2**: biological jump-decay view
+- **Mô hình 3**: latent dynamical system view
+
+Trong vaccine trials nhiều mũi, dữ liệu nên được nhìn như dữ liệu dọc theo thời gian với lịch sử can thiệp biến thiên theo thời gian. Vì vậy, việc chọn mô hình phụ thuộc vào câu hỏi khoa học:
+
+- nếu muốn mô tả và so sánh outcome theo lịch tiêm: Mô hình 1
+- nếu muốn hiểu ảnh hưởng tích lũy của từng mũi: Mô hình 2
+- nếu muốn mô hình hóa trạng thái miễn dịch ẩn và cơ chế boosting: Mô hình 3
+
+## Ghi chú cuối
+
+Trong thực hành, một chiến lược hợp lý là:
+
+- bắt đầu bằng Mô hình 1 như một baseline
+- nếu cần một mô hình gần sinh học hơn, chuyển sang Mô hình 2
+- nếu câu hỏi nghiên cứu đòi hỏi latent mechanism rõ ràng, xem xét Mô hình 3
+
+

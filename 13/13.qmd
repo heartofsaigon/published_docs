@@ -1,0 +1,946 @@
+---
+title: "Structural Equation Modeling (SEM): Concepts, Illustrative Examples, and a Bayesian Stan Model"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: ../references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+## Learning goals
+
+This note introduces structural equation modeling (SEM) for a bachelor student in biostatistics. The goals are:
+
+- to explain what SEM is and why we use it
+- to separate the measurement model from the structural model
+- to explain the role of latent variables using math notation
+- to give illustrative examples
+- to show a simple Bayesian SEM in Stan
+- to simulate a dataset and fit the model in R and Stan
+
+## What is SEM?
+
+Structural equation modeling (SEM) is a framework that combines:
+
+- a **measurement model**, which links observed variables to latent variables
+- a **structural model**, which links latent variables and covariates to one another
+
+The main idea is that some scientific concepts are not directly observed. For example:
+
+- depression
+- anxiety
+- quality of life
+- health literacy
+- treatment adherence
+
+These are latent constructs. We do not observe them directly. Instead, we observe several imperfect indicators, such as questionnaire items or test scores.
+
+So SEM lets us separate:
+
+- the hidden construct we care about
+- the noisy measurements we actually record
+
+A useful summary is:
+
+$$
+\text{observed data} = \text{latent signal} + \text{measurement noise}.
+$$
+
+## Why do we need SEM?
+
+Suppose we want to study the relationship between stress and depression. True depression is not directly observed. Instead, we measure it with several questionnaire items such as sadness, hopelessness, and fatigue.
+
+If we regress each item on stress separately, then we ignore the fact that the items are all intended to reflect the same hidden construct.
+
+SEM is useful because it lets us:
+
+- model latent constructs explicitly
+- account for measurement error
+- estimate multiple linked equations simultaneously
+- study direct and indirect effects in one unified model
+
+## The two main parts of SEM
+
+A standard SEM has two components.
+
+### Measurement model
+
+The measurement model links observed indicators to latent variables:
+
+$$
+\mathbf{y}_i = \boldsymbol{\nu} + \boldsymbol{\Lambda}\boldsymbol{\eta}_i + \boldsymbol{\epsilon}_i,
+$$
+
+where:
+
+- $\mathbf{y}_i$ is the vector of observed indicators for subject $i$
+- $\boldsymbol{\nu}$ is a vector of intercepts
+- $\boldsymbol{\Lambda}$ is the loading matrix
+- $\boldsymbol{\eta}_i$ is the vector of latent variables
+- $\boldsymbol{\epsilon}_i$ is the measurement error vector
+
+The loadings in $\boldsymbol{\Lambda}$ tell us how strongly each observed variable reflects each latent construct.
+
+### Structural model
+
+The structural model links latent variables and observed covariates:
+
+$$
+\boldsymbol{\eta}_i = \boldsymbol{\alpha} + \mathbf{B}\boldsymbol{\eta}_i + \mathbf{\Gamma}\mathbf{x}_i + \boldsymbol{\zeta}_i,
+$$
+
+where:
+
+- $\boldsymbol{\alpha}$ is a vector of intercepts
+- $\mathbf{B}$ describes relationships among latent endogenous variables
+- $\mathbf{\Gamma}$ describes effects of observed covariates $\mathbf{x}_i$
+- $\boldsymbol{\zeta}_i$ is a structural disturbance term
+
+This part looks like regression, except that some variables may be latent.
+
+## A simple one-factor SEM
+
+We begin with a standard example.
+
+Suppose the latent variable is depression, denoted by $\eta_i$, and it is measured by three observed items:
+
+- $y_{i1}$: sadness
+- $y_{i2}$: hopelessness
+- $y_{i3}$: fatigue
+
+Suppose also that we observe a stress covariate $x_i$.
+
+### Structural part
+
+We let latent depression depend on stress:
+
+$$
+\eta_i \sim \mathcal{N}(\alpha + \beta x_i,\tau^2).
+$$
+
+This means:
+
+- $\alpha$ is the mean latent depression when $x_i = 0$
+- $\beta$ is the effect of stress on latent depression
+- $\tau^2$ is the residual variance in latent depression after accounting for stress
+
+### Measurement part
+
+Each item is a noisy indicator of depression:
+
+$$
+y_{i1} \sim \mathcal{N}(\nu_1 + \lambda_1 \eta_i,\sigma_1^2),
+$$
+
+$$
+y_{i2} \sim \mathcal{N}(\nu_2 + \lambda_2 \eta_i,\sigma_2^2),
+$$
+
+$$
+y_{i3} \sim \mathcal{N}(\nu_3 + \lambda_3 \eta_i,\sigma_3^2).
+$$
+
+Interpretation:
+
+- $\nu_j$ is the intercept for item $j$
+- $\lambda_j$ is the factor loading for item $j$
+- $\sigma_j^2$ is the measurement error variance for item $j$
+
+## Identification
+
+A latent variable has no natural scale unless we impose a constraint.
+
+In the model
+
+$$
+y_{ij} = \nu_j + \lambda_j \eta_i + \epsilon_{ij},
+$$
+
+if we multiply $\eta_i$ by a constant and divide $\lambda_j$ by the same constant, the model-implied mean does not change. So we must fix the scale.
+
+A common choice is:
+
+$$
+\lambda_1 = 1.
+$$
+
+This means the latent factor is measured on the scale of item 1.
+
+## Why not just use a total score?
+
+A total score is simple, but it assumes:
+
+- each item contributes equally
+- all items are equally informative
+- measurement error is not modeled explicitly
+
+SEM is more flexible because it allows:
+
+- different loadings for different items
+- different noise levels for different items
+- explicit modeling of the latent construct
+
+## A small illustrative data example
+
+Suppose we observe the following data for five subjects:
+
+$$
+\begin{array}{c|c|ccc}
+\text{Subject} & x_i & y_{i1} & y_{i2} & y_{i3} \\
+\hline
+1 & 0.2 & 1.1 & 1.4 & 0.7 \\
+2 & 1.5 & 2.9 & 3.4 & 2.5 \\
+3 & -0.8 & 0.3 & 0.5 & 0.2 \\
+4 & 0.7 & 2.0 & 2.2 & 1.7 \\
+5 & 1.9 & 3.2 & 3.6 & 2.8
+\end{array}
+$$
+
+Here:
+
+- $x_i$ is stress
+- $y_{i1}, y_{i2}, y_{i3}$ are observed item responses
+- $\eta_i$ is latent depression, which is not observed
+
+The SEM tries to infer the hidden $\eta_i$ values along with the loadings, intercepts, and error variances.
+
+## Variance decomposition
+
+If the latent factor were standardized to have variance 1, then for one item:
+
+$$
+y_{ij} = \nu_j + \lambda_j \eta_i + \epsilon_{ij},
+$$
+
+with
+
+$$
+\eta_i \sim \mathcal{N}(0,1), \qquad \epsilon_{ij} \sim \mathcal{N}(0,\sigma_j^2),
+$$
+
+we would have
+
+$$
+\mathrm{Var}(y_{ij}) = \lambda_j^2 + \sigma_j^2.
+$$
+
+So the variance in an observed item is separated into:
+
+- latent signal: $\lambda_j^2$
+- residual noise: $\sigma_j^2$
+
+This is one of the key ideas in SEM.
+
+## A small numeric illustration
+
+Suppose
+
+$$
+y_{ij} = 1 + 0.8\eta_i + \epsilon_{ij},
+$$
+
+with
+
+$$
+\eta_i \sim \mathcal{N}(0,1), \qquad \epsilon_{ij} \sim \mathcal{N}(0,0.6^2).
+$$
+
+Then
+
+$$
+\mathrm{Var}(y_{ij}) = 0.8^2 + 0.6^2 = 0.64 + 0.36 = 1.
+$$
+
+So in this example, $64\%$ of the item variance comes from the latent factor and $36\%$ comes from measurement noise.
+
+## Bayesian SEM formulation
+
+In the Bayesian framework, we place priors on all unknown parameters.
+
+For this one-factor model, we may use:
+
+$$
+\eta_i \sim \mathcal{N}(\alpha + \beta x_i,\tau^2),
+$$
+
+$$
+y_{i1} \sim \mathcal{N}(\nu_1 + \eta_i,\sigma_1^2),
+$$
+
+$$
+y_{i2} \sim \mathcal{N}(\nu_2 + \lambda_2 \eta_i,\sigma_2^2),
+$$
+
+$$
+y_{i3} \sim \mathcal{N}(\nu_3 + \lambda_3 \eta_i,\sigma_3^2),
+$$
+
+where we fixed $\lambda_1 = 1$.
+
+A reasonable prior specification is:
+
+$$
+\alpha \sim \mathcal{N}(0,2^2), \qquad \beta \sim \mathcal{N}(0,2^2),
+$$
+
+$$
+\tau \sim \text{Half-Normal}(0,1),
+$$
+
+$$
+\nu_j \sim \mathcal{N}(0,3^2),
+$$
+
+$$
+\lambda_2, \lambda_3 \sim \mathcal{N}(0,1.5^2),
+$$
+
+$$
+\sigma_j \sim \text{Half-Normal}(0,1).
+$$
+
+## Typical example data and Stan fit
+
+In this section, we explain a standard structural equation modeling (SEM) problem, describe how the data are generated, and present the Bayesian model in mathematical form.
+
+### The scientific problem
+
+Suppose we are interested in the relationship between an observed stress score and an underlying latent depression level.
+
+For subject $i$, we observe:
+
+- $x_i$: a stress score
+- $y_{i1}$: sadness item score
+- $y_{i2}$: hopelessness item score
+- $y_{i3}$: fatigue item score
+
+The key scientific issue is that true depression is not directly observed. Instead, it is measured imperfectly through several observed indicators. Let $\eta_i$ denote the latent depression level for subject $i$.
+
+Thus, this is a typical SEM problem because:
+
+- there is an unobserved construct of interest, namely $\eta_i$
+- we have several observed variables intended to measure that construct
+- we also want to explain how the latent construct depends on an observed covariate
+
+### What the observed data look like
+
+The observed dataset has the form
+
+$$
+\begin{array}{c|c|ccc}
+\text{Subject} & x_i & y_{i1} & y_{i2} & y_{i3} \\
+\hline
+1 & x_1 & y_{11} & y_{12} & y_{13} \\
+2 & x_2 & y_{21} & y_{22} & y_{23} \\
+\vdots & \vdots & \vdots & \vdots & \vdots \\
+n & x_n & y_{n1} & y_{n2} & y_{n3}
+\end{array}
+$$
+
+where:
+
+- $x_i$ is observed for every subject
+- $y_{i1}, y_{i2}, y_{i3}$ are observed for every subject
+- $\eta_i$ is not observed
+
+So the statistical task is to infer the latent variable $\eta_i$ and the unknown model parameters from the observed data.
+
+### Why this is a typical SEM setting
+
+This is a typical SEM setting because the observed items are not treated as separate unrelated outcomes. Instead, they are viewed as multiple noisy measurements of the same hidden construct.
+
+The modeling logic is:
+
+1. stress affects latent depression
+2. latent depression drives the observed item responses
+3. each observed item also contains measurement error
+
+This is precisely the setting where SEM is more appropriate than fitting three separate regressions.
+
+### How the data are conceptually simulated
+
+To simulate such data, we proceed in two stages.
+
+#### Stage 1: simulate the latent variable
+
+First, for each subject $i$, generate the latent depression score $\eta_i$ from a regression on stress:
+
+$$
+\eta_i \sim \mathcal{N}(\alpha + \beta x_i,\tau^2).
+$$
+
+Here:
+
+- $\alpha$ is the baseline mean latent depression when $x_i = 0$
+- $\beta$ is the effect of stress on latent depression
+- $\tau^2$ is the residual variance of the latent factor
+
+This equation is the structural part of the SEM.
+
+#### Stage 2: simulate the observed indicators
+
+Next, conditional on $\eta_i$, generate the three observed item responses:
+
+$$
+y_{i1} \sim \mathcal{N}(\nu_1 + \lambda_1 \eta_i,\sigma_1^2),
+$$
+
+$$
+y_{i2} \sim \mathcal{N}(\nu_2 + \lambda_2 \eta_i,\sigma_2^2),
+$$
+
+$$
+y_{i3} \sim \mathcal{N}(\nu_3 + \lambda_3 \eta_i,\sigma_3^2).
+$$
+
+Here:
+
+- $\nu_j$ is the intercept for item $j$
+- $\lambda_j$ is the loading for item $j$
+- $\sigma_j^2$ is the measurement error variance for item $j$
+
+These equations form the measurement part of the SEM.
+
+### Identification of the latent factor
+
+The model above is not identified unless we fix the scale of the latent variable.
+
+A standard choice is to set
+
+$$
+\lambda_1 = 1.
+$$
+
+Then the model becomes
+
+$$
+y_{i1} \sim \mathcal{N}(\nu_1 + \eta_i,\sigma_1^2),
+$$
+
+$$
+y_{i2} \sim \mathcal{N}(\nu_2 + \lambda_2 \eta_i,\sigma_2^2),
+$$
+
+$$
+y_{i3} \sim \mathcal{N}(\nu_3 + \lambda_3 \eta_i,\sigma_3^2).
+$$
+
+This means that the latent depression factor is measured on the scale of item 1.
+
+### The full model
+
+Putting the structural and measurement pieces together, the full SEM is:
+
+#### Structural model
+
+$$
+\eta_i \sim \mathcal{N}(\alpha + \beta x_i,\tau^2), \qquad i = 1,\ldots,n.
+$$
+
+#### Measurement model
+
+$$
+y_{i1} \sim \mathcal{N}(\nu_1 + \eta_i,\sigma_1^2),
+$$
+
+$$
+y_{i2} \sim \mathcal{N}(\nu_2 + \lambda_2 \eta_i,\sigma_2^2),
+$$
+
+$$
+y_{i3} \sim \mathcal{N}(\nu_3 + \lambda_3 \eta_i,\sigma_3^2),
+$$
+
+for $i = 1,\ldots,n$.
+
+This says:
+
+- the latent variable $\eta_i$ depends on stress
+- each observed item depends on the same latent variable
+- each observed item has its own noise level
+
+### Interpretation of the parameters
+
+The structural parameters are:
+
+- $\alpha$: baseline mean of latent depression
+- $\beta$: effect of stress on latent depression
+- $\tau$: residual standard deviation of latent depression after accounting for stress
+
+The measurement parameters are:
+
+- $\nu_1, \nu_2, \nu_3$: intercepts of the three items
+- $\lambda_2, \lambda_3$: loadings of items 2 and 3 relative to item 1
+- $\sigma_1, \sigma_2, \sigma_3$: measurement error standard deviations
+
+Interpretation of the loadings:
+
+- if $\lambda_2$ is large, then item 2 strongly reflects latent depression
+- if $\lambda_3$ is small, then item 3 is a weaker indicator of latent depression
+
+Interpretation of $\beta$:
+
+- if $\beta > 0$, higher stress is associated with higher latent depression
+- if $\beta < 0$, higher stress is associated with lower latent depression
+
+### A typical simulation scenario
+
+A common simulation setup is to choose fixed parameter values such as
+
+$$
+\alpha = 0.5, \qquad \beta = 0.8, \qquad \tau = 0.7,
+$$
+
+$$
+\nu_1 = 1.0, \qquad \nu_2 = 1.5, \qquad \nu_3 = 0.5,
+$$
+
+$$
+\lambda_1 = 1, \qquad \lambda_2 = 1.2, \qquad \lambda_3 = 0.8,
+$$
+
+$$
+\sigma_1 = 0.5, \qquad \sigma_2 = 0.6, \qquad \sigma_3 = 0.4.
+$$
+
+Under this setup:
+
+- stress has a positive effect on latent depression because $\beta = 0.8$
+- item 2 is more strongly related to the latent factor than item 1 because $\lambda_2 = 1.2$
+- item 3 is less strongly related to the latent factor than item 1 because $\lambda_3 = 0.8$
+- item 3 has less measurement noise than item 2 because $\sigma_3 < \sigma_2$
+
+### Why the observed items are correlated
+
+An important feature of this model is that the observed items become correlated because they share the same latent factor.
+
+Conditional on $\eta_i$, the three items are independent:
+
+$$
+y_{i1} \perp y_{i2} \perp y_{i3} \mid \eta_i.
+$$
+
+But marginally, they are correlated because all of them depend on $\eta_i$.
+
+This is one of the core ideas of SEM: dependence among observed variables is explained through shared latent structure.
+
+### Prior distributions in the Bayesian model
+
+In the Bayesian framework, we place prior distributions on all unknown parameters.
+
+A reasonable prior specification is:
+
+$$
+\alpha \sim \mathcal{N}(0, 2^2),
+$$
+
+$$
+\beta \sim \mathcal{N}(0, 2^2),
+$$
+
+$$
+\tau \sim \text{Half-Normal}(0, 1),
+$$
+
+$$
+\nu_1, \nu_2, \nu_3 \sim \mathcal{N}(0, 3^2),
+$$
+
+$$
+\lambda_2, \lambda_3 \sim \mathcal{N}(0, 1.5^2),
+$$
+
+$$
+\sigma_1, \sigma_2, \sigma_3 \sim \text{Half-Normal}(0, 1).
+$$
+
+The latent variables also have a model-based prior induced by the structural equation:
+
+$$
+\eta_i \mid x_i, \alpha, \beta, \tau \sim \mathcal{N}(\alpha + \beta x_i,\tau^2).
+$$
+
+### Why these priors are reasonable
+
+These priors are weakly informative.
+
+- The priors on $\alpha$ and $\beta$ allow moderate positive or negative values but discourage implausibly large effects.
+- The priors on $\nu_j$ are wider because the scale of item intercepts may vary.
+- The priors on $\lambda_2$ and $\lambda_3$ allow positive or negative loadings, though in many substantive problems positive loadings may be expected.
+- The half-normal priors on $\tau$ and $\sigma_j$ ensure that standard deviations remain positive and are regularized away from unrealistically large values.
+
+### Likelihood and posterior distribution
+
+For one subject $i$, the contribution to the likelihood is
+
+$$
+p(y_{i1}, y_{i2}, y_{i3}, \eta_i \mid x_i, \theta)
+=
+p(\eta_i \mid x_i, \alpha, \beta, \tau)
+\,
+p(y_{i1} \mid \eta_i, \nu_1, \sigma_1)
+\,
+p(y_{i2} \mid \eta_i, \nu_2, \lambda_2, \sigma_2)
+\,
+p(y_{i3} \mid \eta_i, \nu_3, \lambda_3, \sigma_3),
+$$
+
+where $\theta$ denotes the collection of unknown parameters.
+
+For the full sample, the posterior distribution is proportional to
+
+$$
+p(\theta, \eta_{1:n} \mid \mathbf{y}, \mathbf{x})
+\propto
+\left[
+\prod_{i=1}^n
+p(\eta_i \mid x_i, \alpha, \beta, \tau)
+p(y_{i1} \mid \eta_i, \nu_1, \sigma_1)
+p(y_{i2} \mid \eta_i, \nu_2, \lambda_2, \sigma_2)
+p(y_{i3} \mid \eta_i, \nu_3, \lambda_3, \sigma_3)
+\right]
+p(\alpha)p(\beta)p(\tau)
+p(\nu_1)p(\nu_2)p(\nu_3)
+p(\lambda_2)p(\lambda_3)
+p(\sigma_1)p(\sigma_2)p(\sigma_3).
+$$
+
+### Summary of the modeling logic
+
+This SEM can be read from top to bottom as follows:
+
+1. each subject has an observed stress score $x_i$
+2. stress influences the subject's latent depression level $\eta_i$
+3. latent depression generates the three observed questionnaire items
+4. each item contains additional measurement error
+5. Bayesian inference combines the likelihood and prior distributions to estimate the posterior distribution of all unknown quantities
+
+This is a typical SEM problem because it combines:
+
+- a latent construct
+- multiple observed indicators
+- a structural relationship with an observed covariate
+- explicit modeling of measurement error
+
+## Interpretation of the fitted Bayesian SEM
+
+The posterior summary from the fitted Stan model is shown below.
+
+| Parameter | Posterior mean | 95% credible interval lower | 95% credible interval upper |
+|:--|--:|--:|--:|
+| $\alpha$ | 2.26 | 0.407 | 3.99 |
+| $\beta$ | 0.959 | 0.846 | 1.07 |
+| $\tau$ | 0.665 | 0.579 | 0.749 |
+| $\nu_1$ | -0.755 | -2.49 | 1.08 |
+| $\nu_2$ | -0.572 | -2.68 | 1.67 |
+| $\nu_3$ | -0.821 | -2.16 | 0.624 |
+| $\lambda_2$ | 1.19 | 1.08 | 1.30 |
+| $\lambda_3$ | 0.767 | 0.696 | 0.838 |
+| $\sigma_1$ | 0.454 | 0.382 | 0.527 |
+| $\sigma_2$ | 0.634 | 0.538 | 0.723 |
+| $\sigma_3$ | 0.437 | 0.377 | 0.497 |
+
+### First overall impression
+
+The fitted model recovered several important parameters very well:
+
+- $\beta$ was estimated close to 1, with posterior interval $(0.846, 1.07)$
+- $\tau$ was estimated around $0.665$
+- $\lambda_2$ was estimated around $1.19$
+- $\lambda_3$ was estimated around $0.767$
+- the measurement error standard deviations $\sigma_1, \sigma_2, \sigma_3$ were also estimated quite precisely
+
+These results suggest that the model captured:
+
+- the association between stress and latent depression
+- the relative strengths of the questionnaire items as indicators of the latent factor
+- the item-specific measurement noise
+
+### Interpretation of the structural parameters
+
+The structural part of the model was
+
+$$
+\eta_i \sim \mathcal{N}(\alpha + \beta x_i, \tau^2).
+$$
+
+#### Effect of stress: $\beta$
+
+The posterior mean of $\beta$ is
+
+$$
+\hat{\beta} = 0.959,
+$$
+
+with a $95\%$ credible interval
+
+$$
+(0.846,\; 1.07).
+$$
+
+This indicates a strong positive association between stress and latent depression. Since the credible interval lies entirely above 0, the posterior strongly supports the conclusion that higher stress is associated with higher latent depression.
+
+Substantively, this means that as the observed stress score increases, the latent depression factor also tends to increase.
+
+#### Residual standard deviation of the latent factor: $\tau$
+
+The posterior mean of $\tau$ is
+
+$$
+\hat{\tau} = 0.665,
+$$
+
+with a $95\%$ credible interval
+
+$$
+(0.579,\; 0.749).
+$$
+
+This parameter measures the remaining between-subject variability in latent depression after accounting for stress. The estimate suggests that even after stress is included in the model, there is still substantial residual heterogeneity in latent depression across subjects.
+
+### Interpretation of the measurement parameters
+
+The measurement part of the model was
+
+$$
+y_{i1} \sim \mathcal{N}(\nu_1 + \eta_i,\sigma_1^2),
+$$
+
+$$
+y_{i2} \sim \mathcal{N}(\nu_2 + \lambda_2 \eta_i,\sigma_2^2),
+$$
+
+$$
+y_{i3} \sim \mathcal{N}(\nu_3 + \lambda_3 \eta_i,\sigma_3^2).
+$$
+
+#### Factor loading for item 2: $\lambda_2$
+
+The posterior mean of $\lambda_2$ is
+
+$$
+\hat{\lambda}_2 = 1.19,
+$$
+
+with a $95\%$ credible interval
+
+$$
+(1.08,\; 1.30).
+$$
+
+Because item 1 was used as the reference loading with $\lambda_1 = 1$, this result indicates that item 2 is more strongly associated with the latent depression factor than item 1.
+
+In other words, item 2 appears to be a particularly informative indicator of latent depression.
+
+#### Factor loading for item 3: $\lambda_3$
+
+The posterior mean of $\lambda_3$ is
+
+$$
+\hat{\lambda}_3 = 0.767,
+$$
+
+with a $95\%$ credible interval
+
+$$
+(0.696,\; 0.838).
+$$
+
+This indicates that item 3 is positively associated with the latent depression factor, but less strongly than item 1. Thus, item 3 is still a useful indicator, although it is weaker than the reference item.
+
+### Interpretation of the measurement error standard deviations
+
+The posterior means are:
+
+$$
+\hat{\sigma}_1 = 0.454, \qquad
+\hat{\sigma}_2 = 0.634, \qquad
+\hat{\sigma}_3 = 0.437.
+$$
+
+These results suggest:
+
+- item 2 has the largest residual measurement noise
+- item 3 has the smallest residual measurement noise
+- item 1 is intermediate
+
+So although item 2 has the strongest loading, it also has the largest residual variability. By contrast, item 3 has a weaker loading but relatively low measurement noise.
+
+This shows why SEM is useful: it separates strength of association with the latent factor from residual item-level noise.
+
+### Interpretation of the intercept parameters
+
+The posterior means of the intercepts are:
+
+$$
+\hat{\alpha} = 2.26,
+$$
+
+$$
+\hat{\nu}_1 = -0.755, \qquad
+\hat{\nu}_2 = -0.572, \qquad
+\hat{\nu}_3 = -0.821.
+$$
+
+At first glance, these estimates may look surprising, especially if the data were simulated from values such as
+
+$$
+\alpha = 0.5, \qquad
+\nu_1 = 1.0, \qquad
+\nu_2 = 1.5, \qquad
+\nu_3 = 0.5.
+$$
+
+The key issue is that in this parameterization, the latent intercept $\alpha$ and the item intercepts $\nu_1,\nu_2,\nu_3$ are not well separated.
+
+For example, for item 1,
+
+$$
+\mathbb{E}(y_{i1} \mid x_i) = \nu_1 + \alpha + \beta x_i.
+$$
+
+Thus, the observed mean structure depends on the sum
+
+$$
+\nu_1 + \alpha,
+$$
+
+rather than on $\nu_1$ and $\alpha$ individually. More generally, the model can often shift the latent mean upward and shift the item intercepts downward, while leaving the implied distribution of the observed data almost unchanged.
+
+This means that:
+
+- $\beta$, $\tau$, $\lambda_2$, $\lambda_3$, and the $\sigma_j$ are reasonably well identified
+- $\alpha$ and the $\nu_j$ are not separately well identified under this specification
+
+So the unusual values of $\alpha$ and $\nu_1,\nu_2,\nu_3$ should not be interpreted as model failure. Rather, they indicate an identification issue in the intercept structure.
+
+### Important identification remark
+
+The fitted model fixed the factor loading $\lambda_1 = 1$, which identifies the scale of the latent factor. However, that alone does not fully identify the decomposition of the mean structure into:
+
+- latent intercept $\alpha$
+- item intercepts $\nu_1, \nu_2, \nu_3$
+
+A common way to improve identification is to impose an additional constraint on the latent mean structure, for example:
+
+- fixing $\alpha = 0$, or
+- centering the latent factor to have mean 0 and letting the item intercepts absorb the observed means
+
+Without such a constraint, the intercept parameters can drift while the model still fits the observed data well.
+
+### Practical conclusion from this fit
+
+The results suggest that the model recovered the scientifically important relationships quite well:
+
+- stress has a clear positive effect on latent depression
+- item 2 is the strongest indicator of the latent factor
+- item 3 is a weaker but still useful indicator
+- the measurement error variances are estimated with reasonable precision
+
+The main caution is that the intercept parameters should not be over-interpreted in this fitted specification because of weak identification between the latent intercept and the item intercepts.
+
+### A concise summary
+
+In summary:
+
+- the structural effect of stress was estimated strongly and precisely through $\beta$
+- the latent residual variability was captured by $\tau$
+- the measurement model was well recovered through $\lambda_2$, $\lambda_3$, and the $\sigma_j$
+- the intercept parameters $\alpha$ and $\nu_j$ are not separately identifiable enough in this formulation, so their numerical values should be interpreted with caution
+
+Thus, the fitted SEM appears to recover the main latent relationship and measurement structure well, while also illustrating an important identification lesson in SEM.
+
+
+
+
+```{r}
+#| echo: true
+
+
+pacman::p_load(cmdstanr, HDInterval)
+set.seed(123)
+
+# -----------------------------
+# Simulate a typical SEM dataset
+# -----------------------------
+n <- 200
+
+# Observed covariate
+x <- rnorm(n, mean = 0, sd = 1)
+
+# True structural parameters
+alpha_true <- 0.5
+beta_true  <- 0.8
+tau_true   <- 0.7
+
+# Latent depression
+eta <- rnorm(n, mean = alpha_true + beta_true * x, sd = tau_true)
+
+# True measurement parameters
+nu_true <- c(1.0, 1.5, 0.5)
+lambda_true <- c(1.0, 1.2, 0.8)   # lambda_1 fixed to 1 for identification
+sigma_true <- c(0.5, 0.6, 0.4)
+
+# Observed indicators
+y1 <- rnorm(n, mean = nu_true[1] + lambda_true[1] * eta, sd = sigma_true[1])
+y2 <- rnorm(n, mean = nu_true[2] + lambda_true[2] * eta, sd = sigma_true[2])
+y3 <- rnorm(n, mean = nu_true[3] + lambda_true[3] * eta, sd = sigma_true[3])
+
+dat <- data.frame(
+  id = 1:n,
+  x = x,
+  y1 = y1,
+  y2 = y2,
+  y3 = y3
+)
+
+print(head(dat, 10))
+print(summary(dat[, c("x", "y1", "y2", "y3")]))
+
+# -----------------------------
+# Stan model for Bayesian SEM
+# -----------------------------
+
+mod = cmdstanr::cmdstan_model(stan_file = "stancode.stan")
+
+stan_data <- list(
+  N = nrow(dat),
+  x = dat$x,
+  y1 = dat$y1,
+  y2 = dat$y2,
+  y3 = dat$y3
+)
+
+fit <- mod$sample(
+  data = stan_data,
+  seed = 123,
+  chains = 3,
+  parallel_chains = 3,
+  iter_warmup = 1000,
+  iter_sampling = 1000,
+  refresh = 200
+)
+
+
+fit$summary(c('alpha', 'beta', 'tau', 'nu1', 'nu2', 'nu3', 'lambda2', 'lambda3',
+              'sigma1', 'sigma2', 'sigma3'), mean, hdi)
+
+```
+
+
