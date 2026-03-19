@@ -12,4 +12,4 @@
 10. [Bayesian Causal Inference via G-Computation: Intuition, Predictive Distributions, and Examples](https://heartofsaigon.github.io/published_docs/10.html)
 11.
 12.
-13.[Structural Equation Modeling (SEM): Concepts, Illustrative Examples, and a Bayesian Stan Model](https://heartofsaigon.github.io/published_docs/13.html)
+13. [Structural Equation Modeling (SEM): Concepts, Illustrative Examples, and a Bayesian Stan Model](https://heartofsaigon.github.io/published_docs/13/13.html)
