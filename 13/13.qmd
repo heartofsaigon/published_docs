@@ -25,7 +25,7 @@ editor_options:
 
 ## Learning goals
 
-This note introduces structural equation modeling (SEM) for a bachelor student in biostatistics. The goals are:
+This note introduces structural equation modeling (SEM). The goals are:
 
 - to explain what SEM is and why we use it
 - to separate the measurement model from the structural model
