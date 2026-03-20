@@ -7,7 +7,7 @@ data {
 }
 
 parameters {
-  real alpha;
+ 
   real beta;
   real<lower=0> tau;
 
@@ -27,7 +27,7 @@ parameters {
 
 model {
   // Priors
-  alpha ~ normal(0, 2);
+  
   beta  ~ normal(0, 2);
   tau   ~ normal(0, 1);
 
@@ -43,7 +43,7 @@ model {
   sigma3 ~ normal(0, 1);
 
   // Structural model
-  eta ~ normal(alpha + beta * x, tau);
+  eta ~ normal(beta * x, tau);
 
   // Measurement model
   y1 ~ normal(nu1 + eta, sigma1);          // lambda1 fixed to 1
