@@ -1,0 +1,413 @@
+---
+title: "Three Types of Missingness: Verbal and Mathematical Explanation"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: false
+  eval: false
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+## Overview
+
+Missing data mechanisms are usually classified into three types:
+
+1. Missing completely at random (MCAR)
+2. Missing at random (MAR)
+3. Missing not at random (MNAR)
+
+The key distinction is whether the probability that a value is missing depends on observed data, unobserved data, or neither.
+
+Let $Y$ denote the full data, and partition it as
+
+$$
+Y = (Y_{\mathrm{obs}}, Y_{\mathrm{mis}}),
+$$
+
+where $Y_{\mathrm{obs}}$ is the observed part and $Y_{\mathrm{mis}}$ is the missing part.
+
+Let $R$ denote the missingness indicator, where for each entry,
+
+$$
+R =
+\begin{cases}
+1, & \text{if the value is observed}, \\
+0, & \text{if the value is missing.}
+\end{cases}
+$$
+
+Then the missingness mechanism is described by the conditional distribution
+
+$$
+p(R \mid Y_{\mathrm{obs}}, Y_{\mathrm{mis}}).
+$$
+
+Verbally, this distribution describes how the probability of being observed or missing depends on the data values.
+
+Throughout this note, the verbal explanation and the formal equations are matched. The equation tells us exactly what the dependence structure is, and the verbal explanation translates that dependence into plain language.
+
+## General intuition
+
+The central question is:
+
+> After we know the observed data, does the missingness mechanism still depend on the unseen missing values?
+
+This question separates the three mechanisms.
+
+- If the answer is no, and the missingness does not depend on any data values at all, then the mechanism is MCAR.
+- If the answer is no, but the missingness may depend on observed data, then the mechanism is MAR.
+- If the answer is yes, then the mechanism is MNAR.
+
+A simple memory rule is:
+
+- MCAR: depends on neither seen nor unseen data
+- MAR: depends on seen data only
+- MNAR: depends on unseen data as well
+
+## Missing completely at random
+
+### Verbal explanation
+
+Missing completely at random means that the probability of missingness is unrelated to the data values.
+
+In words, whether a value is missing has nothing to do with either:
+
+- the observed part of the data, or
+- the unobserved missing part of the data.
+
+So the missingness is completely unrelated to the scientific measurements themselves.
+
+### Formal definition
+
+The formal definition is
+
+$$
+p(R \mid Y_{\mathrm{obs}}, Y_{\mathrm{mis}}) = p(R).
+$$
+
+This equation says that once we specify the missingness indicator $R$, its distribution does not depend on either $Y_{\mathrm{obs}}$ or $Y_{\mathrm{mis}}$.
+
+That matches the verbal explanation exactly: missingness is independent of both observed and unobserved data.
+
+### Example
+
+Suppose blood samples are processed in a laboratory, and on some days a machine randomly fails. Because of that failure, some assay results are missing.
+
+If the machine failure is unrelated to patient characteristics, treatment arm, biomarker level, or outcome severity, then the missingness mechanism may be treated as MCAR.
+
+In words, the reason a value is missing is purely accidental and does not depend on the measured value itself.
+
+### Interpretation for analysis
+
+Under MCAR, the observed data can be regarded as a random subsample of the full data.
+
+That is why complete-case analysis is often valid under MCAR. If we analyze only the observed complete records, we do not generally introduce bias through the missingness mechanism itself.
+
+However, this does not mean that missingness is harmless. Even under MCAR, removing incomplete records loses information and can reduce efficiency.
+
+### Small illustrative model
+
+Suppose $Y_i$ is an efficacy outcome, and $R_i$ indicates whether it is observed. Under MCAR, we may write
+
+$$
+\Pr(R_i = 1 \mid Y_i) = \Pr(R_i = 1) = \pi.
+$$
+
+Verbally, this says that the probability of being observed is the same for everyone and does not depend on the outcome value $Y_i$.
+
+## Missing at random
+
+### Verbal explanation
+
+Missing at random means that, after conditioning on the observed data, the missingness mechanism no longer depends on the unseen missing values.
+
+This does not mean that missingness is unrelated to the data. It may depend strongly on observed variables, such as baseline covariates, treatment arm, or previously observed outcomes.
+
+The key point is that once the observed information is known, the unseen missing value itself gives no further information about the missingness mechanism.
+
+### Formal definition
+
+The formal definition is
+
+$$
+p(R \mid Y_{\mathrm{obs}}, Y_{\mathrm{mis}}) = p(R \mid Y_{\mathrm{obs}}).
+$$
+
+This equation says that after conditioning on the observed part $Y_{\mathrm{obs}}$, the distribution of $R$ no longer depends on $Y_{\mathrm{mis}}$.
+
+That is exactly the same statement as the verbal explanation.
+
+### Example
+
+Suppose a repeated-measures vaccine study records antibody response at visits 1, 2, 3, and 4.
+
+A subject's probability of missing visit 4 may depend on:
+
+- treatment arm,
+- age,
+- baseline biomarker,
+- previously observed response at visit 3.
+
+For example, one might write
+
+$$
+\text{logit}\{\Pr(R_{i4} = 1)\} = \alpha + \beta_1 \text{Age}_i + \beta_2 Y_{i3},
+$$
+
+where $Y_{i3}$ is already observed.
+
+Verbally, this says that whether visit 4 is observed depends on age and the previously observed response at visit 3. It does not depend on the unseen value at visit 4 itself.
+
+Therefore, this is compatible with MAR.
+
+### Why this is still called "at random"
+
+The phrase "at random" is often misleading in ordinary language.
+
+MAR does not mean that missingness is unrelated to everything. Instead, it means that conditional on what we have already observed, the missingness is random with respect to what remains unobserved.
+
+That is why MAR can still involve systematic dependence on observed variables.
+
+### Ignorability under MAR
+
+For Bayesian or likelihood-based inference, MAR alone is not the whole story. We also consider the missingness mechanism
+
+$$
+p(R \mid Y, \psi)
+$$
+
+and the outcome model
+
+$$
+p(Y \mid \theta),
+$$
+
+where $\theta$ is the parameter of interest for the outcome model and $\psi$ is the parameter governing the missingness mechanism.
+
+If MAR holds, and if $\theta$ and $\psi$ are distinct, then the missingness mechanism is ignorable for inference about $\theta$.
+
+Formally, under MAR and distinctness, inference for $\theta$ can be based on
+
+$$
+p(\theta \mid Y_{\mathrm{obs}}) \propto p(\theta)\,p(Y_{\mathrm{obs}} \mid \theta).
+$$
+
+Verbally, this means that if the missingness depends only on observed data and does not share the outcome-model parameters of interest, then we do not need to model the missingness mechanism explicitly in order to estimate $\theta$.
+
+### Example of MAR but nonignorable
+
+It is possible for the mechanism to be MAR but still not ignorable if the outcome-model parameter and missingness-model parameter are not distinct.
+
+For example, suppose
+
+$$
+Y_i \sim \mathcal{N}(\mu, \sigma^2),
+$$
+
+and the missingness model is
+
+$$
+\text{logit}\{\Pr(R_i = 1)\} = \alpha + \gamma X_i + \delta \mu,
+$$
+
+where $X_i$ is a fully observed covariate.
+
+This is still MAR, because missingness depends on observed $X_i$ and on the parameter $\mu$, but not on the unobserved missing outcome itself.
+
+However, the mechanism is not ignorable if $\mu$ appears in both the outcome model and the missingness model. In that case, inference about $\mu$ must account for the missingness mechanism jointly.
+
+## Missing not at random
+
+### Verbal explanation
+
+Missing not at random means that even after conditioning on the observed data, the missingness mechanism still depends on the unseen missing values.
+
+This is the defining feature of MNAR.
+
+In plain language, the probability that a value is missing depends on the value we do not get to see.
+
+### Formal definition
+
+The defining condition is
+
+$$
+p(R \mid Y_{\mathrm{obs}}, Y_{\mathrm{mis}}) \neq p(R \mid Y_{\mathrm{obs}}).
+$$
+
+This equation says that even after conditioning on all observed information, the missingness mechanism still depends on the missing part of the data.
+
+That directly matches the verbal explanation.
+
+### Example
+
+Suppose $Y_i$ is an efficacy outcome, where lower values correspond to worse efficacy.
+
+A plausible MNAR mechanism is that subjects with very poor true efficacy are more likely to miss follow-up assessment or withdraw from the study.
+
+One way to express this is
+
+$$
+\text{logit}\{\Pr(R_i = 1)\} = \alpha + \beta (Y_i - \mu).
+$$
+
+Here the probability of observation depends on $Y_i$ itself.
+
+Verbally, this means that the chance of being observed depends on the outcome value. If $Y_i$ is low, the subject may be more likely to drop out or miss the visit. If $Y_i$ is missing, then the missingness probability depends on an unobserved quantity.
+
+That is exactly why the mechanism is MNAR.
+
+### Repeated-measures illustration
+
+In a longitudinal study, suppose $Y_{ij}$ is the response at visit $j$.
+
+If dropout at visit $j$ depends on the observed response at visit $j-1$, then this can still be MAR.
+
+For example,
+
+$$
+\text{logit}\{\Pr(R_{ij} = 1)\} = \alpha + \beta Y_{i,j-1}
+$$
+
+is compatible with MAR if $Y_{i,j-1}$ has been observed.
+
+But if dropout at visit $j$ depends on the current unobserved response $Y_{ij}$, then it becomes MNAR. For example,
+
+$$
+\text{logit}\{\Pr(R_{ij} = 1)\} = \alpha + \beta Y_{ij}.
+$$
+
+Verbally, this says that the probability of observing visit $j$ depends on the very outcome that is missing at visit $j$. That is the hallmark of MNAR.
+
+### Interpretation for analysis
+
+Under MNAR, we generally cannot ignore the missingness mechanism.
+
+The pattern of missingness contains information about the unseen outcomes, so inference based only on the observed-data outcome model may be biased.
+
+In that case, the missingness model usually must be specified jointly with the outcome model.
+
+## Matching the words to the equations
+
+This section summarizes the one-to-one match between the verbal explanation and the formal notation.
+
+### MCAR
+
+Equation:
+
+$$
+p(R \mid Y_{\mathrm{obs}}, Y_{\mathrm{mis}}) = p(R)
+$$
+
+Verbal meaning:
+
+The probability of missingness depends on neither the observed data nor the unobserved data.
+
+### MAR
+
+Equation:
+
+$$
+p(R \mid Y_{\mathrm{obs}}, Y_{\mathrm{mis}}) = p(R \mid Y_{\mathrm{obs}})
+$$
+
+Verbal meaning:
+
+Once the observed data are known, the missingness mechanism no longer depends on the unseen values.
+
+### MNAR
+
+Equation:
+
+$$
+p(R \mid Y_{\mathrm{obs}}, Y_{\mathrm{mis}}) \neq p(R \mid Y_{\mathrm{obs}})
+$$
+
+Verbal meaning:
+
+Even after conditioning on the observed data, the missingness mechanism still depends on the unseen values.
+
+## Relationship between MAR and ignorability
+
+It is important not to confuse MAR with ignorability.
+
+### Verbal explanation
+
+MAR describes the dependence structure of the missingness mechanism.
+
+Ignorability is a stronger concept. It tells us when we are allowed to estimate the outcome-model parameter $\theta$ without explicitly modeling the missingness mechanism.
+
+Thus:
+
+- MAR is about the relationship between $R$ and the data.
+- Ignorability is about whether the missingness model can be omitted for inference about $\theta$.
+
+### Formal explanation
+
+Suppose the full model factorizes as
+
+$$
+p(Y, R \mid \theta, \psi) = p(Y \mid \theta)\,p(R \mid Y, \psi).
+$$
+
+If MAR holds and the parameters are distinct, with prior factorization
+
+$$
+p(\theta, \psi) = p(\theta)\,p(\psi),
+$$
+
+then the missingness mechanism is ignorable for inference on $\theta$, and the posterior reduces to
+
+$$
+p(\theta \mid Y_{\mathrm{obs}}) \propto p(\theta)\,p(Y_{\mathrm{obs}} \mid \theta).
+$$
+
+Verbally, this means that under MAR plus distinctness, the missingness mechanism contributes no additional information needed for inference on $\theta$.
+
+If distinctness fails, then the mechanism may still be MAR, but it is not ignorable.
+
+## Practical summary for analysis
+
+### MCAR
+
+If the mechanism is MCAR, then complete-case analysis is typically unbiased, although it may lose efficiency.
+
+### MAR
+
+If the mechanism is MAR, then missingness may depend on observed data, but not on unseen values after conditioning on observed data.
+
+Under MAR plus distinctness, likelihood-based or Bayesian inference for $\theta$ can be based on the observed-data model alone.
+
+### MNAR
+
+If the mechanism is MNAR, then the missingness depends on unobserved values.
+
+In that case, the missingness mechanism is generally nonignorable, and a joint model for outcomes and missingness is typically required.
+
+## Final take-home message
+
+The three missingness mechanisms can be understood through one guiding question:
+
+> After conditioning on what we have already observed, does the missingness mechanism still depend on what we have not observed?
+
+- If no, and it depends on nothing at all, then it is MCAR.
+- If no, but it may depend on observed data, then it is MAR.
+- If yes, then it is MNAR.
+
+The mathematical equations and the verbal explanations are saying exactly the same thing; the notation simply makes the dependence structure precise.
+
+
