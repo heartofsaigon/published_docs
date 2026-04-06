@@ -15,4 +15,4 @@
 13. [Structural Equation Modeling (SEM): Concepts, Illustrative Examples, and a Bayesian Stan Model](https://heartofsaigon.github.io/published_docs/13/13.html)
 14.
 15.
-16. 13. [Three Types of Missingness: Verbal and Mathematical Explanation](https://heartofsaigon.github.io/published_docs/16.html)
+16. [Three Types of Missingness: Verbal and Mathematical Explanation](https://heartofsaigon.github.io/published_docs/16.html)
