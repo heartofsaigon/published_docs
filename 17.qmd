@@ -1,0 +1,285 @@
+---
+title: "Decomposition of Uncertainty in Gaussian Process and Linear Mixed Models"
+author: " "
+date: today
+format: 
+  html:
+    theme: cosmo
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+    toc: true
+    code-fold: show
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    number-sections: true
+    include-in-header: "/Users/nam-anhtran/heartofsaigon/styles/noindex.html"
+execute: 
+  echo: true
+  eval: true
+  fig-height: 7
+bibliography: references.bib
+csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+## Introduction
+
+Understanding the sources of uncertainty in statistical models is essential for both interpretation and decision-making. In many applications, particularly in biomedical and vaccine research, multiple layers of uncertainty arise from different aspects of the modeling process.
+
+Rather than relying on the often ambiguous aleatoric–epistemic terminology, this document adopts a structured framework distinguishing:
+
+- residual (stochastic) uncertainty  
+- heterogeneity  
+- parameter uncertainty  
+- structural uncertainty  
+
+This framework is applied to two widely used modeling approaches:
+
+- Gaussian Process (GP) models  
+- Linear Mixed Effects Models (LMMs)  
+
+## General Framework of Uncertainty
+
+We consider four main types of uncertainty:
+
+### Residual (Stochastic) Uncertainty
+
+This refers to variability in outcomes that remains unexplained after accounting for all modeled structure.
+
+- Individual-level randomness  
+- Measurement error  
+- Biological variability not captured by covariates  
+
+This corresponds to the error term in regression models.
+
+### Heterogeneity
+
+Heterogeneity refers to systematic variation between subjects that can be explained by observed or structured characteristics.
+
+- Age, sex, baseline immunity  
+- Treatment groups  
+- Cluster or subject-specific effects  
+
+It is **explained variability**, not noise.
+
+### Parameter Uncertainty
+
+Parameter uncertainty arises from estimating unknown quantities using finite data.
+
+- Regression coefficients  
+- Variance components  
+- GP hyperparameters  
+- Latent function values  
+
+This uncertainty decreases with increasing data.
+
+### Structural Uncertainty
+
+Structural uncertainty refers to uncertainty about the model specification itself.
+
+- Choice of model class  
+- Functional form  
+- Covariance structure  
+- Inclusion or omission of covariates  
+
+This is not resolved by more data alone; it requires model revision.
+
+## Uncertainty in Gaussian Process Models
+
+Consider a GP regression model:
+
+$$
+y_i = f(x_i, z_i) + \varepsilon_i
+$$
+
+where:
+
+- $f(\cdot)$ is a latent function with a GP prior  
+- $x_i$ are inputs (e.g., regimen variables)  
+- $z_i$ are baseline characteristics  
+- $\varepsilon_i$ is residual noise  
+
+### Structural Uncertainty in GP
+
+Structural uncertainty arises from modeling choices such as:
+
+- Mean function (constant vs linear vs additive)  
+- Kernel choice (SE, Matérn, additive, graph-based)  
+- Stationarity assumptions  
+- Noise structure (homoskedastic vs heteroskedastic)  
+- Inclusion of baseline covariates  
+
+These define the class of functions the GP can represent.
+
+### Parameter (Latent-Function) Uncertainty
+
+Conditional on a fixed GP structure, uncertainty arises from:
+
+- Latent function $f(x)$  
+- Lengthscales $\ell$  
+- Signal variance $\tau^2$  
+- Noise variance $\sigma^2$  
+
+This is often called **latent-function uncertainty**, the GP analogue of parameter uncertainty.
+
+### Heterogeneity in GP
+
+If baseline characteristics $z_i$ are included in the input, then:
+
+- Variation explained through $f(x_i, z_i)$ represents heterogeneity  
+- Differences across subjects are modeled systematically  
+
+If $z_i$ are omitted, heterogeneity may be misrepresented.
+
+### Residual Uncertainty in GP
+
+Residual uncertainty is represented by:
+
+$$
+\varepsilon_i
+$$
+
+This captures:
+
+- Measurement noise  
+- Biological variability not captured by $f$  
+- Unmodeled subject-level randomness  
+
+If important covariates are omitted, some heterogeneity may be absorbed here.
+
+## Uncertainty in Linear Mixed Effects Models
+
+Consider the linear mixed model:
+
+$$
+y = X^{\prime}\boldsymbol{\alpha} + Z^{\prime}\boldsymbol{b} + \varepsilon
+$$
+
+where:
+
+- $X^{\prime}\boldsymbol{\alpha}$: fixed effects  
+- $Z^{\prime}\boldsymbol{b}$: random effects  
+- $\varepsilon$: residual error  
+
+### Structural Uncertainty in LMM
+
+Structural choices include:
+
+- Inclusion of random intercepts and/or slopes  
+- Covariance structure of random effects  
+- Functional form of fixed effects  
+- Distributional assumptions (e.g., Gaussian errors)  
+
+These define the model structure.
+
+### Parameter Uncertainty in LMM
+
+Uncertainty arises in estimating:
+
+- Fixed effects $\boldsymbol{\alpha}$  
+- Variance components of $\boldsymbol{b}$  
+- Residual variance  
+
+This is classical parameter uncertainty.
+
+### Heterogeneity in LMM
+
+Heterogeneity appears in two forms:
+
+#### Fixed-effect heterogeneity
+
+$$
+X^{\prime}\boldsymbol{\alpha}
+$$
+
+Systematic variation explained by observed covariates.
+
+#### Random-effect heterogeneity
+
+$$
+Z^{\prime}\boldsymbol{b}
+$$
+
+Unobserved but structured variation across:
+
+- subjects  
+- clusters  
+- centers  
+
+This represents latent heterogeneity.
+
+### Residual Uncertainty in LMM
+
+Residual uncertainty is:
+
+$$
+\varepsilon
+$$
+
+This captures variability not explained by either fixed or random effects.
+
+## Comparison Between GP and LMM
+
+Both models share a similar conceptual decomposition:
+
+| Component | GP Model | LMM |
+|----------|---------|-----|
+| Structural uncertainty | Kernel, mean, likelihood | Model form, random-effects structure |
+| Parameter uncertainty | Latent function + hyperparameters | Fixed effects + variance components |
+| Heterogeneity | Modeled via inputs $(z_i)$ | Fixed + random effects |
+| Residual uncertainty | $\varepsilon$ | $\varepsilon$ |
+
+A key difference is that:
+
+- GP models represent latent structure through a continuous function  
+- LMMs represent latent structure through random effects  
+
+## Key Conceptual Insight
+
+A useful way to think about uncertainty is:
+
+- **Structure defines the model class**  
+- **Parameters define a model within that class**  
+- **Heterogeneity is explained variation across subjects**  
+- **Residual uncertainty is unexplained variation**
+
+Importantly:
+
+- Residual uncertainty does **not include** explained heterogeneity  
+- Unmodeled heterogeneity may appear as residual variability  
+- Structural uncertainty lies outside the usual variance decomposition  
+
+## Conclusion
+
+The decomposition of uncertainty into residual, heterogeneity, parameter, and structural components provides a clearer and more interpretable framework than the traditional aleatoric–epistemic distinction.
+
+This framework:
+
+- separates conceptually distinct sources of variability  
+- aligns with both GP and mixed-model formulations  
+- avoids conflating model-based uncertainty with data-generating processes  
+
+It is therefore particularly well-suited for complex modeling settings such as vaccine trial design and multi-objective Bayesian optimization.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
