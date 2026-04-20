@@ -1,0 +1,1274 @@
+---
+title: "Lecture Notes on Power, Assurance, Conditional Power, Predictive Power, and Related Operating Characteristics"
+author: "🌙☕📚💻"
+date:  today
+format: 
+  html:
+    theme: cyborg
+    code-fold: true
+    page-layout: article
+    toc: true
+    number-sections: true
+    #toc-location: left
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+execute: 
+  echo: true
+  eval: false 
+  fig-height: 7
+#bibliography: ../references.bib
+#csl: https://www.zotero.org/styles/sage-vancouver-brackets
+editor_options: 
+  chunk_output_type: console
+---
+
+## Overview
+
+These notes explain a family of operating characteristics used in clinical trial design and interim decision-making:
+
+- classical power
+- assurance
+- conditional power
+- predictive power or predictive probability of success
+- conditional assurance
+- Bayesian versions of power and assurance when success is defined through a posterior decision rule
+
+A major source of confusion is that all of these quantities ask some version of the same question:
+
+What is the probability that the study will eventually be declared successful?
+
+However, they differ along two main dimensions:
+
+1. whether the treatment effect parameter is fixed at a single value or integrated over uncertainty
+2. whether the calculation is done before the trial starts or after interim data have been observed
+
+A second source of confusion is that the final success criterion itself can be either:
+
+- data-based or statistic-based, such as a final $Z$-test or a $p$-value threshold
+- posterior-based, such as a posterior probability exceeding a threshold
+
+These notes separate these issues carefully and explain both the mathematics and the simulation logic used in practice.
+
+## General framework
+
+Let
+
+- $\theta$ denote the parameter of interest, for example a treatment effect
+- $Y$ denote the full trial data
+- $Y_1$ denote the data available at an interim analysis
+- $Y_2$ denote the future data not yet observed, so that $Y = (Y_1, Y_2)$
+- $D(Y)$ denote the final decision function, where
+  $$
+  D(Y) =
+  \begin{cases}
+  1, & \text{if the trial is declared successful} \\
+  0, & \text{otherwise}
+  \end{cases}
+  $$
+
+Thus every operating characteristic we discuss is ultimately some probability or expectation involving $D(Y)$.
+
+## The two core dimensions
+
+### Fixed effect versus integrating over effect uncertainty
+
+At one extreme, we fix $\theta$ at a single value, such as a design alternative $\theta^\ast$.
+
+At the other extreme, we acknowledge uncertainty about $\theta$ and average over a distribution:
+
+- a prior distribution before the trial starts
+- a posterior distribution after observing interim data
+
+### Pre-trial versus interim
+
+Before the trial starts, no data have been observed yet.
+
+After an interim analysis, we condition on the observed interim data $Y_1 = y_1$ and ask about the remaining portion of the study.
+
+These two dimensions generate the main family of operating characteristics discussed here.
+
+## Trial success can be defined in two different ways
+
+Before defining the operating characteristics, it is essential to distinguish two types of final success rules.
+
+### Data-based or statistic-based success rule
+
+A common frequentist-style rule is
+
+$$
+D(Y) = I\{ Z(Y) > c \},
+$$
+
+or equivalently
+
+$$
+D(Y) = I\{ p\text{-value}(Y) < \alpha \}.
+$$
+
+Here, once a full dataset $Y$ is available, we compute the final test statistic directly from the data and determine success immediately.
+
+No posterior updating is required.
+
+### Posterior-based success rule
+
+A common Bayesian rule is
+
+$$
+D(Y) = I\{ P_A(\theta > \delta \mid Y) > \gamma \},
+$$
+
+where
+
+- $\delta$ is a clinically meaningful threshold
+- $\gamma$ is a posterior probability cutoff
+- the subscript $A$ indicates that the posterior is computed using a prespecified analysis prior
+
+In this case, once a full dataset $Y$ is available, we must first update the posterior and then determine success.
+
+Thus, in practice:
+
+- data-based rules use the hypothetical completed data directly
+- posterior-based rules require the hypothetical completed data to be combined with an analysis prior to form a posterior
+
+This distinction applies to every operating characteristic below.
+
+## Continuous endpoint setup
+
+To make the ideas concrete, we use a continuous endpoint setup throughout.
+
+Suppose the parameter of interest is
+
+$$
+\theta = \mu_T - \mu_C,
+$$
+
+the difference in means between treatment and control.
+
+Let the final estimator be $\hat{\theta}_N$, based on the total information or total sample size at the end of the study. Assume
+
+$$
+\hat{\theta}_N \mid \theta \sim N(\theta, V_N).
+$$
+
+Equivalently, define the final $Z$-statistic
+
+$$
+Z_N = \frac{\hat{\theta}_N}{\sqrt{V_N}}.
+$$
+
+For a one-sided superiority test, success under a data-based rule may be defined as
+
+$$
+D(Y) = I\{ Z_N > c \},
+$$
+
+where $c = z_{1-\alpha}$.
+
+At an interim analysis, let the interim estimator be $\hat{\theta}_n$ with variance $V_n$, and let
+
+$$
+I_n = \frac{1}{V_n}, \qquad I_N = \frac{1}{V_N}.
+$$
+
+Then define
+
+$$
+Z_n = \hat{\theta}_n \sqrt{I_n}, \qquad Z_N = \hat{\theta}_N \sqrt{I_N}.
+$$
+
+A standard decomposition is
+
+$$
+Z_N
+=
+\sqrt{\frac{I_n}{I_N}} Z_n
++
+\sqrt{\frac{I_N - I_n}{I_N}} Z_{\text{new}},
+$$
+
+where
+
+$$
+Z_{\text{new}} \mid \theta \sim N\left( \theta \sqrt{I_N - I_n}, 1 \right).
+$$
+
+This decomposition is central for conditional power and predictive power in the continuous normal case.
+
+## Classical power
+
+### Definition
+
+Classical power fixes $\theta$ at a specific value and asks for the probability of final success.
+
+Formally,
+
+$$
+Power(\theta) = P_\theta(D(Y) = 1).
+$$
+
+If the final rule is data-based with $D(Y) = I\{ Z_N > c \}$, then
+
+$$
+Power(\theta)
+=
+P_\theta\left( \frac{\hat{\theta}_N}{\sqrt{V_N}} > c \right).
+$$
+
+Since
+
+$$
+\frac{\hat{\theta}_N}{\sqrt{V_N}} \mid \theta
+\sim
+N\left( \frac{\theta}{\sqrt{V_N}}, 1 \right),
+$$
+
+we obtain
+
+$$
+Power(\theta)
+=
+1 - \Phi\left( c - \frac{\theta}{\sqrt{V_N}} \right).
+$$
+
+### Interpretation
+
+Classical power answers:
+
+If the true effect were exactly $\theta$, what is the probability that the final analysis would declare success?
+
+This is a pre-trial quantity and does not condition on any observed interim data.
+
+### Simulation in practice
+
+If success is data-based:
+
+1. fix $\theta = \theta^\ast$
+2. simulate full trial datasets
+   $$
+   Y^{(m)} \sim p(Y \mid \theta^\ast), \qquad m = 1, \dots, M
+   $$
+3. compute the final test statistic from each dataset
+4. define
+   $$
+   D^{(m)} = D\left( Y^{(m)} \right)
+   $$
+5. estimate power by
+   $$
+   \widehat{Power}(\theta^\ast)
+   =
+   \frac{1}{M} \sum_{m=1}^M D^{(m)}
+   $$
+
+If success is posterior-based:
+
+1. fix $\theta = \theta^\ast$
+2. simulate full trial datasets
+3. for each simulated dataset, combine it with the analysis prior $\pi_A(\theta)$
+4. compute the posterior
+   $$
+   \pi_A(\theta \mid Y^{(m)})
+   $$
+5. define success from the posterior rule
+6. average the resulting indicators
+
+Thus classical power does not inherently require or exclude posterior updating. It depends on the planned final decision rule.
+
+## Assurance
+
+### Definition
+
+Assurance is the prior average of classical power.
+
+If the true effect is assigned a design prior $\pi_D(\theta)$, then
+
+$$
+Assurance
+=
+\int Power(\theta) \, \pi_D(\theta) \, d\theta.
+$$
+
+Equivalently,
+
+$$
+Assurance
+=
+E_{\theta \sim \pi_D}\left[ Power(\theta) \right].
+$$
+
+### Interpretation
+
+Assurance answers:
+
+Before the trial starts, averaging over plausible true effects under the design prior, what is the probability that the study will eventually be declared successful?
+
+Classical power conditions on a single effect value. Assurance does not.
+
+### Why assurance is often lower than classical power
+
+Suppose a trial is designed at a favorable effect size, such as $\theta^\ast = 0.40$, and the resulting classical power is high.
+
+If the design prior places substantial mass on smaller effects, then averaging over that uncertainty may produce a much smaller assurance.
+
+Thus assurance is often regarded as a more realistic pre-trial measure when the true effect is uncertain.
+
+### Simulation in practice with a data-based final rule
+
+1. draw a true effect from the design prior
+   $$
+   \theta^{(m)} \sim \pi_D(\theta)
+   $$
+2. simulate full trial data
+   $$
+   Y^{(m)} \sim p(Y \mid \theta^{(m)})
+   $$
+3. compute success directly from the full simulated data using the final planned statistic-based rule
+4. define
+   $$
+   D^{(m)} = D\left( Y^{(m)} \right)
+   $$
+5. estimate assurance by
+   $$
+   \widehat{Assurance}
+   =
+   \frac{1}{M} \sum_{m=1}^M D^{(m)}
+   $$
+
+This is the version that is closest in spirit to frequentist trial evaluation, except that the design stage still averages over a prior distribution of $\theta$.
+
+### Simulation in practice with a posterior-based final rule
+
+In Bayesian design practice, one often separates the prior used for generating plausible true effects from the prior used in actual data analysis.
+
+Let
+
+- $\pi_D(\theta)$ be the design prior
+- $\pi_A(\theta)$ be the analysis prior
+
+Then the simulation algorithm is:
+
+1. draw
+   $$
+   \theta^{(m)} \sim \pi_D(\theta)
+   $$
+2. simulate
+   $$
+   Y^{(m)} \sim p(Y \mid \theta^{(m)})
+   $$
+3. update using the analysis prior
+   $$
+   \pi_A(\theta \mid Y^{(m)}) \propto p(Y^{(m)} \mid \theta)\pi_A(\theta)
+   $$
+4. determine success using the posterior-based rule
+5. average the success indicators
+
+Thus there are two practical assurance pipelines:
+
+- frequentist-like or data-based assurance
+- fully Bayesian assurance using an analysis prior and posterior-based success rule
+
+### Formal Bayesian assurance with separate design and analysis priors
+
+If success is defined by
+
+$$
+D_A(Y) = I\{ P_A(\theta > \delta \mid Y) > \gamma \},
+$$
+
+then Bayesian assurance is
+
+$$
+Assurance_B
+=
+E_{\theta \sim \pi_D}
+\left[
+E_{Y \mid \theta}
+\left[
+D_A(Y)
+\right]
+\right].
+$$
+
+Equivalently,
+
+$$
+Assurance_B
+=
+\int
+\int
+D_A(Y)\, p(Y \mid \theta)\, \pi_D(\theta)\, dY \, d\theta.
+$$
+
+This is important in practice because the design prior and analysis prior do not have to be identical.
+
+## Conditional power
+
+### Definition
+
+Conditional power is an interim quantity. It fixes the treatment effect at some value $\theta^\ast$ and asks for the probability of eventual success given the observed interim data.
+
+Formally,
+
+$$
+CP(\theta^\ast; y_1)
+=
+P_{\theta^\ast}\left( D(Y_1, Y_2) = 1 \mid Y_1 = y_1 \right).
+$$
+
+### Interpretation
+
+Conditional power answers:
+
+Given the observed interim data, and assuming the true effect is exactly $\theta^\ast$, what is the probability that the final analysis will declare success?
+
+### What is $\theta^\ast$?
+
+This is simply a plug-in assumed value of the effect. Common choices include:
+
+- the design alternative used in sample size planning
+- the interim observed estimate
+- a clinically meaningful effect size
+- the posterior mean or posterior median, used merely as a plug-in number
+
+What matters is that conditional power fixes the effect at a single value.
+
+### Closed-form expression in the normal case
+
+Using the normal setup and a data-based final rule $D(Y) = I\{ Z_N > c \}$, conditional power is
+
+$$
+CP(\theta^\ast; z_n)
+=
+P_{\theta^\ast}(Z_N > c \mid Z_n = z_n).
+$$
+
+Since
+
+$$
+Z_N
+=
+\sqrt{\frac{I_n}{I_N}} z_n
++
+\sqrt{\frac{I_N - I_n}{I_N}} Z_{\text{new}},
+$$
+
+with
+
+$$
+Z_{\text{new}} \mid \theta^\ast
+\sim
+N\left( \theta^\ast \sqrt{I_N - I_n}, 1 \right),
+$$
+
+it follows that
+
+$$
+CP(\theta^\ast; z_n)
+=
+1 - \Phi\left(
+\frac{
+c
+-
+\sqrt{I_n/I_N}\, z_n
+-
+\theta^\ast (I_N - I_n)/\sqrt{I_N}
+}{
+\sqrt{(I_N - I_n)/I_N}
+}
+\right).
+$$
+
+### Simulation in practice
+
+If success is data-based:
+
+1. fix $\theta = \theta^\ast$
+2. hold the observed interim data fixed at $Y_1 = y_1$
+3. simulate future data
+   $$
+   Y_2^{(m)} \sim p(Y_2 \mid Y_1 = y_1, \theta^\ast)
+   $$
+4. create completed datasets
+   $$
+   Y^{(m)} = (y_1, Y_2^{(m)})
+   $$
+5. compute success directly from each completed dataset
+6. average the success indicators
+
+If success is posterior-based:
+
+1. fix $\theta = \theta^\ast$
+2. simulate future data
+3. combine $(y_1, Y_2^{(m)})$ with the analysis prior
+4. compute the hypothetical posterior
+5. determine success from the posterior rule
+6. average the indicators
+
+Thus even conditional power may or may not include a posterior-updating step depending on the final success rule.
+
+### Key point
+
+Conditional power uses the conditional distribution of the future data given the observed interim data and a fixed effect:
+
+$$
+p(Y_2 \mid Y_1 = y_1, \theta^\ast).
+$$
+
+This is not the same as a posterior predictive distribution, because $\theta$ is not integrated out.
+
+## Predictive power or predictive probability of success
+
+### Definition
+
+Predictive power averages conditional power over the posterior distribution of $\theta$ given the interim data.
+
+Formally,
+
+$$
+PP(y_1)
+=
+P\left( D(Y_1, Y_2) = 1 \mid Y_1 = y_1 \right)
+=
+\int CP(\theta; y_1)\, p(\theta \mid y_1)\, d\theta.
+$$
+
+Equivalently,
+
+$$
+PP(y_1)
+=
+E_{\theta \mid y_1}\left[ CP(\theta; y_1) \right].
+$$
+
+### Interpretation
+
+Predictive power answers:
+
+Given the observed interim data, and accounting for current uncertainty about the true effect, what is the probability that the final analysis will declare success?
+
+This is often called predictive probability of success.
+
+### Formal nested representation
+
+We can write
+
+$$
+PP(y_1)
+=
+\int
+\int
+D(y_1, y_2)\,
+p(y_2 \mid y_1, \theta)\,
+p(\theta \mid y_1)\,
+dy_2\, d\theta.
+$$
+
+This shows the two layers clearly:
+
+1. uncertainty in the remaining data $Y_2$
+2. uncertainty in the true effect $\theta$
+
+### Simulation in practice
+
+If success is posterior-based:
+
+1. compute the current posterior
+   $$
+   p(\theta \mid y_1)
+   $$
+2. for $m = 1, \dots, M$, draw
+   $$
+   \theta^{(m)} \sim p(\theta \mid y_1)
+   $$
+3. simulate future data
+   $$
+   Y_2^{(m)} \sim p(Y_2 \mid Y_1 = y_1, \theta^{(m)})
+   $$
+4. form completed datasets
+   $$
+   Y^{(m)} = (y_1, Y_2^{(m)})
+   $$
+5. combine $Y^{(m)}$ with the analysis prior
+6. compute the hypothetical posterior
+7. define success from the hypothetical posterior
+8. estimate predictive power by averaging the success indicators
+
+If success is data-based:
+
+1. draw $\theta^{(m)}$ from the posterior
+2. simulate $Y_2^{(m)}$
+3. form $Y^{(m)} = (y_1, Y_2^{(m)})$
+4. compute the final test statistic directly from $Y^{(m)}$
+5. average the success indicators
+
+Thus predictive power does not inherently require posterior updating at the final decision stage. It requires posterior averaging over $\theta$ at the interim stage. Whether an additional posterior update is needed for the success rule depends on how success is defined.
+
+### Relationship to conditional power
+
+The most important identity is
+
+$$
+PP(y_1)
+=
+\int CP(\theta; y_1)\, p(\theta \mid y_1)\, d\theta.
+$$
+
+Thus predictive power is the posterior average of conditional power.
+
+## Conditional assurance
+
+### Definition
+
+Conditional assurance is an updated version of assurance after current evidence has been observed.
+
+Let the current evidence be denoted by $Y_1 = y_1$, and let success refer to a future study or future portion of a development program. Then conditional assurance can be written as
+
+$$
+CA(y_1)
+=
+E_{\theta \mid y_1}
+\left[
+E_{Y_2 \mid y_1, \theta}
+\left[
+D(y_1, Y_2)
+\right]
+\right].
+$$
+
+Equivalently,
+
+$$
+CA(y_1)
+=
+\int CP(\theta; y_1)\, p(\theta \mid y_1)\, d\theta.
+$$
+
+### Why this looks identical to predictive power
+
+Mathematically, conditional assurance and predictive power can take the same form.
+
+The difference is often conceptual and contextual:
+
+- predictive power usually refers to the chance that the current ongoing study will succeed at the final analysis
+- conditional assurance often refers to the chance that a future study or future step in a development program will succeed, conditional on current evidence
+
+Thus the event being predicted may differ even when the formula looks the same.
+
+### Interpretation
+
+Conditional assurance answers:
+
+Given current evidence, averaging over the updated uncertainty about the true effect, what is the probability that the future planned study or future development step will succeed?
+
+### Practical importance
+
+Conditional assurance is particularly useful when the decision concerns whether to continue development, redesign a future study, or evaluate the value of a subsequent confirmatory trial.
+
+## The core 2 by 2 structure
+
+A useful way to organize the main quantities is the following.
+
+| Time point | Fixed effect | Integrate over effect uncertainty |
+|---|---|---|
+| Pre-trial | Classical power | Assurance |
+| Interim or current evidence | Conditional power | Predictive power or conditional assurance |
+
+This table captures the most important logic.
+
+## Direct data-based success versus posterior-based success
+
+A major practical theme from these notes is that the same operating characteristic can be implemented under two different decision paradigms.
+
+### Direct data-based success
+
+Examples include:
+
+- final $Z$-test significant
+- final $p$-value below threshold
+- final estimate above a clinically relevant margin
+
+Pipeline:
+
+$$
+\text{hypothetical completed data}
+\longrightarrow
+\text{compute final statistic directly}
+\longrightarrow
+\text{success or failure}
+$$
+
+### Posterior-based success
+
+Examples include:
+
+- posterior probability $P(\theta > 0 \mid Y)$ exceeds $0.95$
+- posterior probability $P(\theta > \delta \mid Y)$ exceeds a predefined threshold
+
+Pipeline:
+
+$$
+\text{hypothetical completed data}
+\longrightarrow
+\text{combine with analysis prior}
+\longrightarrow
+\text{hypothetical posterior}
+\longrightarrow
+\text{success or failure}
+$$
+
+This distinction does not define whether a quantity is power, assurance, conditional power, or predictive power. It only determines how the success indicator $D(Y)$ is computed.
+
+## Frequentist-like, hybrid, and fully Bayesian implementations
+
+It is helpful to describe practical implementations using three labels.
+
+### Frequentist-like
+
+- success is defined directly from data or a final test statistic
+- no analysis prior is needed in the final decision step
+
+Example:
+
+assurance computed by averaging over a design prior, but each hypothetical completed trial is judged using a final $Z$-test
+
+This is not purely frequentist, because the design stage still averages over a prior distribution of $\theta$, but it is frequentist-like at the decision stage.
+
+### Hybrid
+
+- uncertainty in $\theta$ is handled through a prior or posterior in the design or predictive stage
+- final success is still defined using a direct data-based statistic
+
+Example:
+
+predictive power where $\theta$ is drawn from the interim posterior, but final success is judged by whether the completed trial is statistically significant
+
+### Fully Bayesian
+
+- design or predictive averaging uses prior or posterior uncertainty about $\theta$
+- final success is defined through a posterior-based criterion using an analysis prior
+
+Example:
+
+- Bayesian assurance with separate design prior and analysis prior
+- predictive power under a posterior probability success rule
+
+## The special issue of design prior and analysis prior
+
+In Bayesian design practice, one must distinguish between:
+
+- a design prior $\pi_D(\theta)$ used to represent plausible true effect values for simulation and operating characteristic evaluation
+- an analysis prior $\pi_A(\theta)$ used in the actual analysis of each hypothetical completed dataset
+
+These may be different.
+
+### Why separate them?
+
+The design prior is often intended to reflect realistic uncertainty about the true effect across possible worlds.
+
+The analysis prior is often intended to represent the actual prior that will be used in the trial analysis and may be chosen for scientific, regulatory, or robustness reasons.
+
+### Formal role of the two priors
+
+For Bayesian assurance:
+
+$$
+\theta \sim \pi_D(\theta),
+$$
+
+then
+
+$$
+Y \mid \theta \sim p(Y \mid \theta),
+$$
+
+and finally
+
+$$
+\pi_A(\theta \mid Y) \propto p(Y \mid \theta)\pi_A(\theta).
+$$
+
+Success is then determined from the posterior under $\pi_A$.
+
+This separation is important and should not be ignored in teaching Bayesian design.
+
+## What if we simulate all of $Y_1$ and $Y_2$ after seeing interim data?
+
+An idea discussed in our conversation was the following:
+
+1. use the observed interim data $Y_1^{obs}$ to obtain a posterior for $\theta$
+2. draw $\theta^{(m)}$ from that posterior
+3. instead of keeping $Y_1^{obs}$ fixed, simulate a full hypothetical replicate dataset $(Y_1^{rep}, Y_2^{rep})$
+4. evaluate success on that full hypothetical replicate dataset
+
+This is a coherent procedure, but it is not standard predictive power for the ongoing trial.
+
+### Why not?
+
+Predictive power for the ongoing trial conditions on the actually observed interim data. Therefore, the observed interim data must remain fixed, and only the future unobserved data are simulated.
+
+If one re-simulates $Y_1$, then one is no longer calculating
+
+$$
+P(\text{success in the ongoing trial} \mid Y_1 = y_1^{obs}),
+$$
+
+but rather something closer to a posterior-predictive probability of success for a new replicate full trial.
+
+### Why the idea is still meaningful
+
+If the model is adequate and the observed interim data are not unusual, then the posterior based on $Y_1^{obs}$ summarizes the interim evidence, and full replicate datasets generated from that posterior may resemble the observed trial in a distributional sense.
+
+However, they do not condition on the realized interim dataset itself.
+
+Thus this quantity answers a different question:
+
+Given what the interim data have taught us about $\theta$, what is the chance that a new replicate full trial would succeed?
+
+That is conceptually distinct from predictive power for the ongoing trial.
+
+## What if we simulate only $Y_2$ and merge it with observed $Y_1$?
+
+This is the standard practice for interim operating characteristics such as conditional power and predictive power.
+
+The algorithm is:
+
+1. hold $Y_1^{obs}$ fixed
+2. simulate hypothetical future data $Y_2^{hyp}$
+3. create
+   $$
+   Y^{full} = (Y_1^{obs}, Y_2^{hyp})
+   $$
+4. evaluate success on $Y^{full}$
+
+If the final rule is data-based, success can be determined directly from the completed dataset.
+
+If the final rule is posterior-based, then $Y^{full}$ must be combined with the analysis prior to create a hypothetical posterior before success is evaluated.
+
+This is standard and appears throughout interim monitoring practice.
+
+## Relationship identities worth remembering
+
+The following identities are central.
+
+### Assurance is the expectation of classical power under the design prior
+
+$$
+Assurance
+=
+E_{\theta \sim \pi_D}\left[ Power(\theta) \right].
+$$
+
+### Predictive power is the posterior expectation of conditional power
+
+$$
+PP(y_1)
+=
+E_{\theta \mid y_1}\left[ CP(\theta; y_1) \right].
+$$
+
+### Classical power is also the expectation of conditional power over interim realizations
+
+If we fix $\theta$, then
+
+$$
+Power(\theta)
+=
+E_\theta\left[ CP(\theta; Y_1) \right].
+$$
+
+This identity is useful because it shows that when the interim data are allowed to vary again, the conditional quantity averages back to the unconditional one.
+
+### Why classical power is the expectation of conditional power
+
+A useful identity is
+
+$$
+Power(\theta) = E_\theta\left[ CP(\theta; Y_1) \right].
+$$
+
+This statement is correct, but it is often misunderstood because the expectation is **not** taken with respect to $\theta$. Here, the subscript $\theta$ means that the expectation is taken under the sampling distribution indexed by the fixed true effect $\theta$.
+
+In other words, $\theta$ is fixed, while the interim data $Y_1$ are random.
+
+To see this carefully, let $D(Y)$ be the indicator of final trial success:
+
+$$
+D(Y) =
+\begin{cases}
+1, & \text{if the final analysis declares success} \\
+0, & \text{otherwise.}
+\end{cases}
+$$
+
+Here, the full data are $Y = (Y_1, Y_2)$, where:
+
+- $Y_1$ is the interim data
+- $Y_2$ is the future data collected after the interim analysis
+
+Under a fixed $\theta$, the classical power is
+
+$$
+Power(\theta) = P_\theta(D(Y)=1).
+$$
+
+Because $D(Y)$ is an indicator variable, this is the same as
+
+$$
+Power(\theta) = E_\theta[D(Y)].
+$$
+
+Now define the conditional power at interim value $Y_1 = y_1$ as
+
+$$
+CP(\theta; y_1) = P_\theta(D(Y)=1 \mid Y_1 = y_1).
+$$
+
+Again, since $D(Y)$ is an indicator, this can be written as
+
+$$
+CP(\theta; y_1) = E_\theta[D(Y) \mid Y_1 = y_1].
+$$
+
+If we now replace the realized interim value $y_1$ by the random interim variable $Y_1$, then
+
+$$
+CP(\theta; Y_1) = E_\theta[D(Y) \mid Y_1].
+$$
+
+Taking expectation on both sides gives
+
+$$
+E_\theta\left[ CP(\theta; Y_1) \right]
+=
+E_\theta\left[ E_\theta[D(Y) \mid Y_1] \right].
+$$
+
+By the law of total expectation,
+
+$$
+E_\theta\left[ E_\theta[D(Y) \mid Y_1] \right]
+=
+E_\theta[D(Y)].
+$$
+
+Therefore,
+
+$$
+Power(\theta) = E_\theta\left[ CP(\theta; Y_1) \right].
+$$
+
+This identity says that conditional power is a random quantity because it depends on the realized interim data. If we average it over all possible interim realizations under the fixed true effect $\theta$, we recover the ordinary unconditional classical power.
+
+Equivalently, if $Y_1$ has density or mass function $p(y_1 \mid \theta)$, then
+
+$$
+Power(\theta)
+=
+\int CP(\theta; y_1)\, p(y_1 \mid \theta)\, dy_1,
+$$
+
+for continuous $Y_1$, or
+
+$$
+Power(\theta)
+=
+\sum_{y_1} CP(\theta; y_1)\, p(y_1 \mid \theta),
+$$
+
+for discrete $Y_1$.
+
+It is important not to confuse this identity with the predictive power identity
+
+$$
+PP(y_1) = E_{\theta \mid y_1}\left[ CP(\theta; y_1) \right],
+$$
+
+because the two expectations are taken over different objects:
+
+- in $Power(\theta) = E_\theta[CP(\theta; Y_1)]$, the expectation is over the sampling distribution of the interim data $Y_1$, with $\theta$ fixed
+- in $PP(y_1) = E_{\theta \mid y_1}[CP(\theta; y_1)]$, the expectation is over the posterior distribution of $\theta$, with the interim data fixed at $y_1$
+
+Thus the first is a frequentist averaging identity over possible interim datasets, whereas the second is a Bayesian averaging identity over posterior uncertainty in the treatment effect.
+
+
+## A worked continuous normal example
+
+Suppose the final estimator satisfies
+
+$$
+\hat{\theta}_N \mid \theta \sim N(\theta, 0.10^2),
+$$
+
+and the trial is declared successful if
+
+$$
+\hat{\theta}_N > 1.96 \times 0.10 = 0.196.
+$$
+
+### Classical power at a fixed effect
+
+If $\theta^\ast = 0.30$, then
+
+$$
+Power(0.30)
+=
+P(\hat{\theta}_N > 0.196 \mid \theta = 0.30)
+=
+1 - \Phi\left( \frac{0.196 - 0.30}{0.10} \right).
+$$
+
+Thus
+
+$$
+Power(0.30)
+=
+1 - \Phi(-1.04)
+=
+\Phi(1.04)
+\approx 0.851.
+$$
+
+### Assurance under a design prior
+
+Suppose
+
+$$
+\theta \sim N(0.20, 0.15^2).
+$$
+
+Then under the prior predictive distribution,
+
+$$
+\hat{\theta}_N \sim N(0.20, 0.10^2 + 0.15^2).
+$$
+
+Therefore,
+
+$$
+Assurance
+=
+P(\hat{\theta}_N > 0.196)
+=
+1 - \Phi\left(
+\frac{0.196 - 0.20}{\sqrt{0.10^2 + 0.15^2}}
+\right).
+$$
+
+Since
+
+$$
+\sqrt{0.10^2 + 0.15^2}
+=
+\sqrt{0.0325}
+\approx 0.1803,
+$$
+
+we obtain
+
+$$
+Assurance
+\approx
+1 - \Phi(-0.0222)
+\approx
+0.509.
+$$
+
+This illustrates how assurance can be much lower than classical power at a favorable fixed effect.
+
+## Practical simulation pseudo-code
+
+### Classical power with a data-based final rule
+
+```{r}
+M <- 10000
+theta_star <- 0.30
+success <- logical(M)
+
+for (m in 1:M) {
+  y_full <- simulate_full_trial(theta = theta_star)
+  z_final <- final_test_statistic(y_full)
+  success[m] <- (z_final > qnorm(0.975))
+}
+
+power_est <- mean(success)
+power_est
+```
+
+### Assurance with a design prior and a data-based final rule
+
+```{r}
+M <- 10000
+success <- logical(M)
+
+for (m in 1:M) {
+  theta_m <- rnorm(1, mean = 0.20, sd = 0.15)
+  y_full <- simulate_full_trial(theta = theta_m)
+  z_final <- final_test_statistic(y_full)
+  success[m] <- (z_final > qnorm(0.975))
+}
+
+assurance_est <- mean(success)
+assurance_est
+```
+
+### Conditional power with a posterior-based final rule
+
+```{r}
+M <- 10000
+theta_star <- 0.25
+success <- logical(M)
+
+y1_obs <- observed_interim_data()
+
+for (m in 1:M) {
+  y2_hyp <- simulate_future_data(theta = theta_star, y1 = y1_obs)
+  y_full <- merge_interim_and_future(y1_obs, y2_hyp)
+
+  posterior <- update_posterior_analysis_prior(y_full)
+  post_prob <- posterior_prob_theta_greater_than_delta(posterior, delta = 0)
+
+  success[m] <- (post_prob > 0.95)
+}
+
+conditional_power_est <- mean(success)
+conditional_power_est
+```
+
+### Predictive power with a posterior-based final rule
+
+```{r}
+M <- 10000
+success <- logical(M)
+
+y1_obs <- observed_interim_data()
+posterior_interim <- update_posterior_analysis_prior(y1_obs)
+
+for (m in 1:M) {
+  theta_m <- draw_from_posterior(posterior_interim)
+  y2_hyp <- simulate_future_data(theta = theta_m, y1 = y1_obs)
+  y_full <- merge_interim_and_future(y1_obs, y2_hyp)
+
+  hypothetical_posterior <- update_posterior_analysis_prior(y_full)
+  post_prob <- posterior_prob_theta_greater_than_delta(hypothetical_posterior, delta = 0)
+
+  success[m] <- (post_prob > 0.95)
+}
+
+predictive_power_est <- mean(success)
+predictive_power_est
+```
+
+### Bayesian assurance with separate design and analysis priors
+
+```{r}
+M <- 10000
+success <- logical(M)
+
+for (m in 1:M) {
+  theta_m <- draw_from_design_prior()
+  y_full <- simulate_full_trial(theta = theta_m)
+
+  posterior <- update_with_analysis_prior(y_full)
+  post_prob <- posterior_prob_theta_greater_than_delta(posterior, delta = 0)
+
+  success[m] <- (post_prob > 0.95)
+}
+
+bayesian_assurance_est <- mean(success)
+bayesian_assurance_est
+```
+
+## Common misunderstandings
+
+### Misunderstanding 1
+
+Predictive power always requires a posterior update after simulating hypothetical future data.
+
+This is false.
+
+Predictive power requires posterior averaging over $\theta$ at the interim stage. But whether a second posterior update is needed after simulating future data depends on whether the final success rule is posterior-based.
+
+### Misunderstanding 2
+
+Assurance is always Bayesian and always requires an analysis prior.
+
+This is false.
+
+Assurance is Bayesian in the sense that it averages over uncertainty about the true effect, but the final success rule may be either:
+
+- data-based, which does not require an analysis prior
+- posterior-based, which does require an analysis prior
+
+### Misunderstanding 3
+
+Conditional assurance and predictive power are always different quantities.
+
+This is false.
+
+They can have the same mathematical form. The distinction is often contextual:
+
+- predictive power is usually framed for the ongoing trial
+- conditional assurance is often framed for a future study or future development step conditional on current evidence
+
+### Misunderstanding 4
+
+If one re-simulates both $Y_1$ and $Y_2$ after observing interim data, that is still predictive power for the current trial.
+
+This is false.
+
+That procedure produces something closer to a posterior-predictive success probability for a replicate full trial, not predictive power for the ongoing trial conditional on its actually observed interim data.
+
+## Summary table
+
+| Measure | Time point | Effect handling | Data simulated | Typical notation |
+|---|---|---|---|---|
+| Classical power | Pre-trial | Fix $\theta$ | Full trial data | $Power(\theta)$ |
+| Assurance | Pre-trial | Integrate over design prior | Full trial data | $Assurance$ |
+| Conditional power | Interim | Fix $\theta^\ast$ | Future data only | $CP(\theta^\ast; y_1)$ |
+| Predictive power | Interim | Integrate over posterior | Future data only | $PP(y_1)$ |
+| Conditional assurance | Current evidence or interim | Integrate over updated effect uncertainty | Future study or future data | $CA(y_1)$ |
+
+## Final conceptual map
+
+The cleanest way to remember all of this is:
+
+### Pre-trial
+
+- fix $\theta$
+  $$
+  \to \text{Classical power}
+  $$
+- integrate over prior uncertainty in $\theta$
+  $$
+  \to \text{Assurance}
+  $$
+
+### Interim or current evidence
+
+- fix $\theta$
+  $$
+  \to \text{Conditional power}
+  $$
+- integrate over updated uncertainty in $\theta$
+  $$
+  \to \text{Predictive power or conditional assurance}
+  $$
+
+Then separately ask:
+
+Is success defined directly from the completed data, or through a posterior computed using an analysis prior?
+
+That second question determines the practical computation pipeline.
+
+## Closing remark
+
+These operating characteristics are best understood not as isolated formulas, but as a family generated by two design choices:
+
+1. whether the effect is fixed or integrated over uncertainty
+2. whether the calculation is pre-trial or conditional on current evidence
+
+Once those two choices are clear, the remaining details follow systematically.
+
+
+
+
