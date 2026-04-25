@@ -18,3 +18,4 @@
 16. [Three Types of Missingness: Verbal and Mathematical Explanation](https://heartofsaigon.github.io/published_docs/16.html)
 17. [Decomposition of Uncertainty in Gaussian Process and Linear Mixed Models](https://heartofsaigon.github.io/published_docs/17.html)
 18. [Lecture Notes on Power, Assurance, Conditional Power, Predictive Power, and Related Operating Characteristics](https://heartofsaigon.github.io/published_docs/18.html)
+19. [Understanding the ROC Curve and AUC Under the Binormal Model](https://heartofsaigon.github.io/published_docs/19.html)

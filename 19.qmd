@@ -1,0 +1,319 @@
+---
+title: "Understanding the ROC Curve and AUC Under the Binormal Model"
+author: "🌙☕📚💻"
+date:  today
+format: 
+  html:
+    theme: cosmo
+    code-fold: true
+    page-layout: article
+    toc: true
+    number-sections: true
+    toc-location: left
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+execute: 
+  echo: false
+  eval: false 
+  fig-height: 7
+#bibliography: ../references.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+
+## Introduction
+
+The receiver operating characteristic (ROC) curve is a fundamental tool for evaluating the performance of a diagnostic marker. In this lecture, we build intuition step by step, starting from threshold-based classification and ending with the binormal ROC representation and the probabilistic interpretation of the area under the curve (AUC).
+
+Throughout, we consider a continuous marker $X$ measured in two populations:
+
+- non-diseased subjects
+- diseased subjects
+
+Larger values of $X$ indicate stronger evidence of disease.
+
+## Threshold-Based Classification
+
+For a threshold $r$, define the decision rule:
+
+$$
+\text{test-positive if } X \ge r.
+$$
+
+This induces two key quantities:
+
+$$
+\mathrm{FPF}(r) = P(X \ge r \mid \text{non-diseased}),
+$$
+
+$$
+\mathrm{TPF}(r) = P(X \ge r \mid \text{diseased}).
+$$
+
+Each threshold $r$ produces one point:
+
+$$
+(\mathrm{FPF}(r), \mathrm{TPF}(r)).
+$$
+
+## Definition of the ROC Curve
+
+The ROC curve is the collection of these points as $r$ varies:
+
+$$
+\mathrm{ROC}
+=
+\left\{
+(\mathrm{FPF}(r), \mathrm{TPF}(r)) : r \in \mathbb R
+\right\}.
+$$
+
+This is the practical definition: vary the threshold and compute operating characteristics.
+
+## ROC as a Function of the False-Positive Fraction
+
+We can reparametrize the ROC curve using
+
+$$
+t = \mathrm{FPF}(r).
+$$
+
+Then define
+
+$$
+\mathrm{ROC}(t) = \mathrm{TPF}(r_t),
+$$
+
+where $r_t$ satisfies
+
+$$
+\mathrm{FPF}(r_t) = t.
+$$
+
+Thus,
+
+$$
+\mathrm{ROC}
+=
+\left\{
+(t, \mathrm{ROC}(t)) : t \in (0,1)
+\right\}.
+$$
+
+This representation is useful for integration.
+
+## Area Under the ROC Curve
+
+The area under the ROC curve is
+
+$$
+\mathrm{AUC} = \int_0^1 \mathrm{ROC}(t)\,dt.
+$$
+
+This is the average true-positive rate across all false-positive rates.
+
+## AUC as a Probability
+
+We now derive the key identity:
+
+$$
+\mathrm{AUC} = P(X_1 > X_0),
+$$
+
+where:
+
+- $X_1$ is the marker from a randomly selected diseased subject,
+- $X_0$ is the marker from a randomly selected non-diseased subject.
+
+### Step-by-Step Derivation
+
+Start with
+
+$$
+\mathrm{AUC} = \int_0^1 \mathrm{ROC}(t)\,dt.
+$$
+
+Recall that
+
+$$
+t = \mathrm{FPF}(r) = P(X_0 \ge r) = 1 - F_0(r),
+$$
+
+where $F_0$ is the CDF of $X_0$.
+
+Also,
+
+$$
+\mathrm{ROC}(t) = \mathrm{TPF}(r) = P(X_1 \ge r).
+$$
+
+So rewrite the integral in terms of $r$:
+
+$$
+\mathrm{AUC}
+=
+\int_{-\infty}^{+\infty} \mathrm{TPF}(r)\, dF_0(r).
+$$
+
+Substitute:
+
+$$
+\mathrm{AUC}
+=
+\int_{-\infty}^{+\infty} P(X_1 \ge r)\, dF_0(r).
+$$
+
+Now interpret this expression.
+
+The term $dF_0(r)$ means we are averaging over the distribution of $X_0$.
+
+So we can write:
+
+$$
+\mathrm{AUC}
+=
+E_{X_0}\bigl[ P(X_1 \ge X_0 \mid X_0) \bigr].
+$$
+
+Because $X_1$ and $X_0$ are independent,
+
+$$
+E_{X_0}\bigl[ P(X_1 \ge X_0 \mid X_0) \bigr]
+=
+P(X_1 \ge X_0).
+$$
+
+Therefore,
+
+$$
+\mathrm{AUC} = P(X_1 > X_0).
+$$
+
+### Geometric Interpretation
+
+In the 2D plane:
+
+- x-axis: $X_0$
+- y-axis: $X_1$
+
+The line $X_1 = X_0$ splits the plane into two regions.
+
+The region above the line corresponds to:
+
+$$
+X_1 > X_0.
+$$
+
+Thus,
+
+$$
+\mathrm{AUC}
+=
+\text{probability mass above the diagonal}.
+$$
+
+This is a different coordinate system from the ROC curve, but represents the same quantity.
+
+## Binormal Model
+
+Assume:
+
+$$
+X_0 \sim N(\mu_0, \sigma_0^2),
+\qquad
+X_1 \sim N(\mu_1, \sigma_1^2).
+$$
+
+### False-Positive Fraction
+
+$$
+\mathrm{FPF}(r)
+=
+1 - \Phi\left(\frac{r - \mu_0}{\sigma_0}\right).
+$$
+
+Define
+
+$$
+t = \mathrm{FPF}(r).
+$$
+
+Let $Z_t$ satisfy
+
+$$
+1 - \Phi(Z_t) = t.
+$$
+
+Then
+
+$$
+\frac{r - \mu_0}{\sigma_0} = Z_t
+\quad \Rightarrow \quad
+r = \mu_0 + \sigma_0 Z_t.
+$$
+
+### True-Positive Fraction
+
+$$
+\mathrm{TPF}(r)
+=
+1 - \Phi\left(\frac{r - \mu_1}{\sigma_1}\right).
+$$
+
+Substitute $r$:
+
+$$
+\mathrm{TPF}(t)
+=
+1 - \Phi\left(
+\frac{\mu_0 + \sigma_0 Z_t - \mu_1}{\sigma_1}
+\right).
+$$
+
+Define
+
+$$
+a = \frac{\mu_1 - \mu_0}{\sigma_1},
+\qquad
+b = \frac{\sigma_0}{\sigma_1}.
+$$
+
+Then
+
+$$
+\mathrm{ROC}(t) = 1 - \Phi(bZ_t - a).
+$$
+
+### Final ROC Form
+
+$$
+\left[
+t,\, 1 - \Phi(bZ_t - a)
+\right], \quad t \in (0,1).
+$$
+
+## Interpretation of Parameters
+
+- $a$ measures separation between groups
+- $b$ compares variability between groups
+
+If $\sigma_0 = \sigma_1$, then $b=1$ and the ROC curve depends mainly on $a$.
+
+## Key Takeaways
+
+- The ROC curve is built by varying a threshold.
+- The AUC is the area under this curve.
+- The AUC has an equivalent probabilistic interpretation:
+  $$
+  \mathrm{AUC} = P(X_1 > X_0).
+  $$
+- Under binormality, the ROC curve has a closed-form representation:
+  $$
+  \mathrm{ROC}(t) = 1 - \Phi(bZ_t - a).
+  $$
+
+These different representations are mathematically equivalent but provide different insights into diagnostic performance.
+
