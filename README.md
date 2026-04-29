@@ -19,3 +19,4 @@
 17. [Decomposition of Uncertainty in Gaussian Process and Linear Mixed Models](https://heartofsaigon.github.io/published_docs/17.html)
 18. [Lecture Notes on Power, Assurance, Conditional Power, Predictive Power, and Related Operating Characteristics](https://heartofsaigon.github.io/published_docs/18.html)
 19. [Understanding the ROC Curve and AUC Under the Binormal Model](https://heartofsaigon.github.io/published_docs/19.html)
+20. [Joint Distribution of a Binary Variable and an Ordinal Categorical Variable](https://heartofsaigon.github.io/published_docs/19.html)

@@ -1,0 +1,428 @@
+---
+title: "Joint Distribution of a Binary Variable and an Ordinal Categorical Variable"
+author: "🌙☕📚💻"
+date:  today
+format: 
+  html:
+    theme: cosmo
+    code-fold: true
+    page-layout: article
+    toc: true
+    number-sections: true
+    toc-location: left
+    self-contained-math: true
+    embed-resources: true
+    html-math-method: katex
+    css: "/Users/nam-anhtran/heartofsaigon/styles/styles_doc.css"
+execute: 
+  echo: false
+  eval: false 
+  fig-height: 7
+#bibliography: ../references.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+
+## Introduction
+
+In many statistical problems, each observational unit carries both a binary label and a categorical outcome. A principled modeling approach must decide whether to treat these jointly or conditionally.
+
+This lecture develops a coherent statistical framework with a clear flow:
+
+- First, we define the **joint multinomial model** for a binary–categorical pair.
+- Second, we contrast it with the **group-specific (conditional) multinomial model**.
+- Third, we explain why the joint model is the appropriate viewpoint for our target problem.
+- Finally, we apply the framework to a diagnostic-test example and derive the AUC.
+
+The goal is not only to present formulas, but to make the statistical structure explicit and logically consistent.
+
+## Statistical Framework: Joint Multinomial Model
+
+Consider a random observational unit. It has two variables:
+
+$$
+D \in \{0,1\}, \quad S \in \{1,\ldots,r\}.
+$$
+
+The fundamental statistical object is the **joint pair**:
+
+$$
+(D,S).
+$$
+
+Define the joint probabilities:
+
+$$
+p_{1i} = P(D=1, S=i), \quad p_{0i} = P(D=0, S=i).
+$$
+
+These probabilities describe the full distribution of the data-generating process.
+
+They must satisfy:
+
+$$
+\sum_{i=1}^{r} p_{1i} + \sum_{i=1}^{r} p_{0i} = 1.
+$$
+
+This is the defining property of a **joint multinomial probability vector** over $2r$ categories.
+
+### Sampling Model
+
+Suppose we observe $N$ independent units. Define counts:
+
+$$
+Y_i = \#\{D=1, S=i\}, \quad Z_i = \#\{D=0, S=i\}.
+$$
+
+Then:
+
+$$
+(Y_1,\ldots,Y_r, Z_1,\ldots,Z_r)
+\sim
+\mathrm{Multinomial}
+\left(
+N; p_{11},\ldots,p_{1r}, p_{01},\ldots,p_{0r}
+\right).
+$$
+
+Key point:
+
+- We fix the **total sample size $N$**.
+- The group sizes
+  $$
+  m = \sum_i Y_i, \quad n = \sum_i Z_i
+  $$
+  are **random**.
+
+This is the defining feature of the joint multinomial viewpoint.
+
+## Factorization: Binary + Conditional Categorical
+
+The joint model can be rewritten as:
+
+$$
+P(D,S) = P(D)\,P(S \mid D).
+$$
+
+Let:
+
+$$
+w = P(D=1).
+$$
+
+Define conditional distributions:
+
+$$
+\theta_i = P(S=i \mid D=1), \quad \phi_i = P(S=i \mid D=0).
+$$
+
+Then:
+
+$$
+p_{1i} = w \theta_i, \quad p_{0i} = (1-w)\phi_i.
+$$
+
+And:
+
+$$
+\sum_i \theta_i = 1, \quad \sum_i \phi_i = 1.
+$$
+
+This is **not a different model**. It is the same joint multinomial expressed in factorized form.
+
+## Alternative View: Group-specific Multinomial Model
+
+Now consider a different modeling assumption.
+
+Suppose the sample sizes in each group are fixed:
+
+$$
+m = \sum_i Y_i, \quad n = \sum_i Z_i.
+$$
+
+Then the natural model becomes:
+
+$$
+(Y_1,\ldots,Y_r) \mid m \sim \mathrm{Multinomial}(m; \theta_1,\ldots,\theta_r),
+$$
+
+$$
+(Z_1,\ldots,Z_r) \mid n \sim \mathrm{Multinomial}(n; \phi_1,\ldots,\phi_r).
+$$
+
+Key point:
+
+- Here we **condition on $m$ and $n$**.
+- The binary variable $D$ is no longer modeled explicitly.
+
+## Critical Distinction Between the Two Views
+
+This distinction is fundamental:
+
+### Joint Multinomial View
+
+- Models the full joint distribution $P(D,S)$.
+- Fixes total sample size $N$.
+- Group sizes $m,n$ are random.
+- Answers: what is the probability of observing a unit with both a group and a score?
+
+### Group-specific View
+
+- Models only $P(S \mid D)$.
+- Conditions on fixed group sizes.
+- Ignores how units enter groups.
+- Answers: given the group, what is the score distribution?
+
+### Important Conclusion
+
+The two views answer different statistical questions.
+
+They are not interchangeable.
+
+## Why We Use the Joint Multinomial Model
+
+In the diagnostic-test setting, the data-generating process is:
+
+1. A region of interest is randomly selected.
+2. It has a true disease status $D$.
+3. A score $S$ is assigned.
+
+So the natural object is:
+
+$$
+(D,S).
+$$
+
+Therefore, the correct statistical model is:
+
+$$
+P(D,S).
+$$
+
+This directly corresponds to the joint multinomial framework.
+
+The group-specific model would implicitly assume that:
+
+- the number of affected and unaffected regions is fixed in advance,
+- and the binary mechanism is ignored.
+
+This does not match the sampling description.
+
+Hence:
+
+**We should use the joint multinomial model for this problem.**
+
+## Example: Diagnostic Test and ROC Analysis
+
+### Problem Setup
+
+Each region has:
+
+$$
+D = \text{true status (affected/unaffected)},
+$$
+
+$$
+S = \text{diagnostic score (ordinal)}.
+$$
+
+We observe $(D,S)$ for many regions.
+
+### Research Question
+
+How well does the score distinguish affected from unaffected regions?
+
+### Target Quantity: AUC
+
+Define:
+
+$$
+S_1 \sim P(S \mid D=1), \quad S_0 \sim P(S \mid D=0).
+$$
+
+The area under the ROC curve is:
+
+$$
+AUC = P(S_1 > S_0) + \frac{1}{2}P(S_1 = S_0).
+$$
+
+This measures the probability that an affected region receives a higher score than an unaffected region.
+
+## Connecting AUC to the Joint Model
+
+From the joint probabilities:
+
+$$
+p_{1i} = P(D=1,S=i), \quad p_{0i} = P(D=0,S=i),
+$$
+
+we recover:
+
+$$
+\theta_i = P(S=i \mid D=1) = \frac{p_{1i}}{\sum_j p_{1j}},
+$$
+
+$$
+\phi_i = P(S=i \mid D=0) = \frac{p_{0i}}{\sum_j p_{0j}}.
+$$
+
+Then:
+
+$$
+AUC =
+\sum_{i=2}^{r} \theta_i \sum_{j=1}^{i-1} \phi_j
++
+\frac{1}{2} \sum_{i=1}^{r} \theta_i \phi_i.
+$$
+
+Key insight:
+
+- The joint model provides $p_{1i}, p_{0i}$.
+- These are normalized to obtain $\theta_i, \phi_i$.
+- The AUC is computed from these conditional distributions.
+
+## Bayesian Inference Under the Joint Model
+
+We place a Dirichlet prior:
+
+$$
+(p_{11},\ldots,p_{1r},p_{01},\ldots,p_{0r})
+\sim
+\mathrm{Dirichlet}(\alpha_1,\ldots,\alpha_r,\beta_1,\ldots,\beta_r).
+$$
+
+Given data:
+
+$$
+(Y_1,\ldots,Y_r,Z_1,\ldots,Z_r),
+$$
+
+the posterior is:
+
+$$
+\mathrm{Dirichlet}(Y_1+\alpha_1,\ldots,Z_r+\beta_r).
+$$
+
+Procedure:
+
+1. Sample $(p_{1i},p_{0i})$ from posterior.
+2. Normalize to obtain $\theta_i,\phi_i$.
+3. Compute AUC.
+4. Repeat to obtain posterior distribution of AUC.
+
+## Conclusion
+
+The correct statistical interpretation follows a clear hierarchy:
+
+- The data are generated as joint outcomes $(D,S)$.
+- This leads naturally to a **joint multinomial model**.
+- Conditional score distributions are derived from joint probabilities.
+- AUC is computed from these conditional distributions.
+
+The group-specific multinomial model is mathematically valid but corresponds to a different conditioning assumption.
+
+For diagnostic-test problems where units are sampled from a population with unknown group membership, the joint multinomial model is the appropriate framework.
+
+
+
+```{r}
+#| echo: true
+#| eval: true
+
+pacman::p_load(cmdstanr, posterior, HDInterval, gt, tidyverse)
+
+stan_code = "
+data {
+  int<lower=2> R;                 // number of diagnostic score categories
+  array[2 * R] int<lower=0> y;    // joint counts:
+                                  // y[1:R] = affected scores 1,...,R
+                                  // y[(R+1):(2R)] = unaffected scores 1,...,R
+  vector<lower=0>[2 * R] alpha;   // Dirichlet prior parameters
+}
+
+parameters {
+  simplex[2 * R] p;               // joint probabilities P(D, S)
+}
+
+model {
+  p ~ dirichlet(alpha);
+  y ~ multinomial(p);
+}
+
+generated quantities {
+  vector[R] theta_star;           // P(S = i | D = affected)
+  vector[R] phi_star;             // P(S = i | D = unaffected)
+
+  real p_affected;
+  real p_unaffected;
+  real auc;
+
+  p_affected = sum(p[1:R]);
+  p_unaffected = sum(p[(R + 1):(2 * R)]);
+
+  for (i in 1:R) {
+    theta_star[i] = p[i] / p_affected;
+    phi_star[i] = p[R + i] / p_unaffected;
+  }
+
+  auc = 0;
+
+  for (i in 2:R) {
+    auc += theta_star[i] * sum(phi_star[1:(i - 1)]);
+  }
+
+  for (i in 1:R) {
+    auc += 0.5 * theta_star[i] * phi_star[i];
+  }
+}
+"
+
+mod = cmdstanr::cmdstan_model(write_stan_file(stan_code))
+
+stan_data <- list(
+  R = 4,
+  y = c(
+    affected_score_1 = 4,
+    affected_score_2 = 26,
+    affected_score_3 = 34,
+    affected_score_4 = 21,
+    unaffected_score_1 = 160,
+    unaffected_score_2 = 28,
+    unaffected_score_3 = 2,
+    unaffected_score_4 = 0
+  ),
+  alpha = rep(1, 8)
+)
+
+fit = mod$sample(data = stan_data, 
+                 chains = 4, 
+                 parallel_chains = 4, 
+                  iter_warmup = 4000,
+                 iter_sampling = 1000,
+                 seed = 123,
+                 show_messages = F)
+
+fit$summary(c("theta_star", "phi_star", "auc"), mean, hdi)|>
+ mutate(variable = c(paste0(rep(c("$\\theta_", "$\\phi_"), each = 4), 1:4, "$"), "AUC"))|>
+ mutate(across(mean:upper, ~round(.,3)*100))|>
+ gt()|>
+ gt::fmt_markdown(columns = everything())|>
+ gt::tab_spanner(label = "Highest density interval", column = c("lower", "upper"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
